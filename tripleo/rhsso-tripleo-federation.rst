@@ -1,3 +1,29 @@
+auth/methods:
+        value: external,password,token,oauth1,mapped
+federation/trusted_dashboard:
+        value: http://controller.lab.local/dashboard/auth/websso/
+
+        trusted_dashboard = https://$FED_KEYSTONE_HOST/dashboard/auth/websso/
+
+        Note: the host is $FED_KEYSTONE_HOST only because TripleO
+        co-locates both Keystone and Horizon on the same host. If
+        Horizon is running on a different host than Keystone adjust
+        accordingly.
+
+
+federation/sso_callback_template:
+        value: /etc/keystone/sso_callback_template.html
+
+        set in /etc/keystone/keystone.conf
+
+federation/remote_id_attribute:
+        value: MELLON_IDP
+
+        Note this value is passed because of the "MellonIdP IDP"
+        directive in the mellon httpd configuration file.
+
+
+
 Introduction
 ============
 
@@ -221,6 +247,170 @@ instance.
    Site specific values utilized by the ``configure-federation`` script
    are gathered into the file ``fed_variables``. You will need to edit
    this file to adjust the parameters specific to your deployment.
+
+Issues when a HTTP server is behind a proxy or SSL terminator
+=============================================================
+
+When a server sits behind a proxy the environment it sees is different
+than what the client sees as the public identity of the
+server. A backend server may have a different hostname, listen on a
+different port and use a different protocol than what a client sees on
+the front side of the proxy. For many web apps this is not a major
+problem. Typically most of the problems occur when a server has to
+generate a self-referential URL (perhaps because it will redirect the
+client to a different URL on the same server). The URL's the server
+generates must match the public address and port as seen by the
+client.
+
+Authentical protocols are especially sensitive to the host, port and
+protocol (http vs. https) because they often need to assure a request
+was targeted at a specific server, on a specific port and on a secure
+transport. Proxies can play havoc with this vital information because
+by definition a proxy transforms a request received on it's public
+frontend before dispatching it to a non-public server in the
+backend. Likewise responses from the non-public backend server
+sometimes need adjustment so it appears as if the response came from
+the pubic frontend of the proxy.
+
+There are various approches to solving the problem. Because SAML is
+sensitive to host, port and protocol and because we are configuring
+SAML behind a high availability proxy (HAProxy) we must deal with
+these issues or things will fail (often in cryptic ways).
+
+Server/Host name
+----------------
+
+The host and port appear in several contexts:
+
+* The host and port in the URL the client used
+* The host HTTP header inserted into the HTTP request (derived from
+  the client URL host.
+* The hostname of the front facing proxy the client connects to
+  (actually the FQDN of the IP address the proxy is listening on)
+* The host and port of the backend server which actually handled the client
+  request.
+* The **virtual** host and port of the server that actually handled the client
+  request.
+
+It is vital to understand how each of these is utilized otherwise
+there is the opportunity for the wrong host and port to be used with
+the consequence the authentication protocols may fail because they
+cannont validate who the parties in the transaction are.
+
+Let's begin with the backend server handling the request because this
+is where the host and port are evaluated and most of the problems
+occur. The backend server need to know:
+
+* The URL of the request (including host & port)
+* It's own host & port
+
+Apache supports virtual name hosting. This allows a single server to
+host multiple domains. For example a server running on example.com
+might service requests for both bigcorp.com and littleguy.com. The
+latter 2 names are called virtual host names. Virtual hosts in Apache
+are configured inside a server configuration block, for example::
+
+  <VirtualHost>
+    ServerName bigcorp.com
+  </VirtualHost>
+
+When Apache receives a request it deduces the host from ``HOST`` HTTP
+header. It then tries to match the host to the ``ServerName`` in it's
+collection of virtual hosts.
+
+The ``ServerName`` directive sets the request scheme, hostname and
+port that the server uses to identify itself. When
+``UseCanonicalName`` is enabled Apache will use the hostname and port
+specified in the ``ServerName`` directive to construct the canonical
+name for the server. This name is used in all self-referential URLs,
+and for the values of SERVER_NAME and SERVER_PORT in CGIs. If
+``UseCanonicalName`` is Off Apache will form self-referential URLs
+using the hostname and port supplied by the client if any are
+supplied.
+
+If no port is specified in the ``ServerName``, then the server will
+use the port from the incoming request. For optimal reliability and
+predictability, you should specify an explicit hostname and port using
+the ``ServerName`` directive.  If no ``ServerName`` is specified, the
+server attempts to deduce the host by first asking the operating
+system for the system hostname, and if that fails, performing a
+reverse lookup on an IP address present on the system. Obviously this
+will produce the wrong host information when the server is behind a
+proxy therefore use of the ``ServerName`` directive is essential.
+
+The Apache doc
+https://httpd.apache.org/docs/current/mod/core.html#servername is very
+clear concerning the need to fully specify the scheme, host, and port
+in the ``Server`` name directive when the server is behind a proxy, it states:
+
+    Sometimes, the server runs behind a device that processes SSL,
+    such as a reverse proxy, load balancer or SSL offload
+    appliance. When this is the case, specify the https:// scheme and
+    the port number to which the clients connect in the ServerName
+    directive to make sure that the server generates the correct
+    self-referential URLs.
+
+When proxies are in effect the ``X-Forwarded-*`` HTTP headers come
+into play. These are set by proxies and are meant to allow an entity
+processing a request to recognize the request was forwarded and
+what the original values were *before* being forwarded.
+
+The TripleO HAProxy configuration sets the ``X-Forwarded-Proto`` HTTP
+header based on whether the front connection utilized SSL/TLS or not::
+
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-Proto http if !{ ssl_fc }
+
+To make matters interesting core Apache **does not** interpret this
+header thus responsibility falls to someone else to process it. In our
+situation where HAProxy terminates SSL prior to the backend server
+processing the request the fact the ``X-Forwarded-Proto`` HTTP header
+is set to https is **irrelevant** because Apache does not utilize the
+header when an extention module such as mellon asks for the protocol
+scheme of the request.
+
+But what about web apps hosted by Apache behind a proxy? It turns out
+it's the web app (or rather the web app framework) responsibility to
+process the header. Apps handle the protocol scheme of a fowarded
+request differently than Apache extention modueles do.
+
+Since Horizon is a Django web app it's Django responsibility. This
+issue aries with the ``origin`` query parameter used by Horizon during
+authentication. Horizon adds ``origin`` query parameter to the
+Keystone URL it invokes to perform authentication. The ``origin``
+parameter is used by Horizon to redirect back to original resource.
+
+The ``origin`` parameter generated by Horizon may incorrectly specify
+http as the scheme instead of https depite the fact Horizon is running
+with https enabled. This occurs because Horizon calls function
+``build_absolute_uri()`` to form the ``origin`` parameter. It is
+entirely up to the Django to identify the scheme because
+``build_absolute_url()`` is ultimately implemented by Django. You can
+force Django to process the ``X-Forwarded-Proto`` via a special
+configuration directive. This is documented here:
+
+https://docs.djangoproject.com/en/1.10/ref/settings/#secure-proxy-ssl-header
+
+This can be enabled in the /etc/openstack-dashboard/local_settings
+file by uncommenting this line::
+
+  #SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+Note, Django prefixes the header with "HTTP\_" and converts hyphens to
+underscores.
+
+After uncommenting this the Origin parameter correctly used the https scheme.
+
+Even when the ``ServerName`` directive includes the https scheme the
+Django call ``build_absolute_url()`` will not use the https
+scheme. Thus for Django you must use the ``SECURE_PROXY_SSL_HEADER``
+override, specifying the scheme in ``ServerName`` directive will not
+work.
+
+The critical thing to note is is that Apache extension modules and web
+apps process the request scheme of a forwarded request differently
+demanding **both** the ``ServerName`` and ``X-Forwarded-Proto`` HTTP
+header techniques be utilized.
 
 Set Up IPA
 ==========
@@ -457,7 +647,7 @@ The following nodes will need an FQDN:
 
   * host running the OpenStack Horizon Dashboard
 
-  * host running the OpenStack Keystone service (``$FED_MELLON_HOST``)
+  * host running the OpenStack Keystone service (``$FED_KEYSTONE_HOST``)
 
   * host running RH-SSO
 
@@ -631,12 +821,12 @@ the IP address should be put in the ``/etc/hosts`` file like this::
    but you may need to add the host entry on any external hosts that
    participate.
 
-The ``$FED_MELLON_HOST`` and ``$FED_MELLON_HTTPS_PORT`` need to be set
+The ``$FED_KEYSTONE_HOST`` and ``$FED_KEYSTONE_HTTPS_PORT`` need to be set
 in the ``fed_variables`` file. Using the example values from above it
 would be::
 
-  FED_MELLON_HOST="overcloud.localdomain"
-  FED_MELLON_HTTPS_PORT=13000
+  FED_KEYSTONE_HOST="overcloud.localdomain"
+  FED_KEYSTONE_HTTPS_PORT=13000
 
 .. Note::
    Because Mellon is running on the Apache server hosting Keystone the
@@ -753,8 +943,8 @@ This can be done like this::
   % yum -y install keycloak-httpd-client-install
   % sudo keycloak-httpd-client-install \
    --client-originate-method registration \
-   --mellon-https-port $FED_MELLON_HTTPS_PORT \
-   --mellon-hostname $FED_MELLON_HOST  \
+   --mellon-https-port $FED_KEYSTONE_HTTPS_PORT \
+   --mellon-hostname $FED_KEYSTONE_HOST  \
    --mellon-root /v3 \
    --keycloak-server-url $FED_RHSSO_URL  \
    --keycloak-admin-password  $FED_RHSSO_ADMIN_PASSWORD \
@@ -1070,144 +1260,194 @@ do the following::
    ./configure-federation openstack-create-protocol
 
 
-Issues when a HTTP server is behind a proxy or SSL terminator
-=============================================================
+Step n: Fully qualify the Keystone scheme, host, and port
+---------------------------------------------------------
 
-When a server sits behind a proxy the environment it sees is different
-than what the client sees as the public identity of the
-server. A backend server may have a different hostname, listen on a
-different port and use a different protocol than what a client sees on
-the front side of the proxy. For many web apps this is not a major
-problem. Typically most of the problems occur when a server has to
-generate a self-referential URL (perhaps because it will redirect the
-client to a different URL on the same server). The URL's the server
-generates must match the public address and port as seen by the
-client.
+On each controller node edit
+``/etc/httpd/conf.d/10-keystone_wsgi_main.conf`` to assure the
+``ServerName`` directive inside the ``VirtualHost`` block includes the
+https scheme, the public hostname and the public port. You must also
+enable the ``UseCanonicalName`` directive For example::
 
-Authentical protocols are especially sensitive to the host, port and
-protocol (http vs. https) because they often need to assure a request
-was targeted at a specific server, on a specific port and on a secure
-transport. Proxies can play havoc with this vital information because
-by definition a proxy transforms a request received on it's public
-frontend before dispatching it to a non-public server in the
-backend. Likewise responses from the non-public backend server
-sometimes need adjustment so it appears as if the response came from
-the pubic frontend of the proxy.
+  <VirtualHost>
+    ServerName https:$FED_KEYSTONE_HOST:$FED_KEYSTONE_HTTPS_PORT
+    UseCanonicalName On
+    ...
+  </VirtualHost>
 
-There are various approches to solving the problem. Because SAML is
-sensitive to host, port and protocol and because we are configuring
-SAML behind a high availability proxy (HAProxy) we must deal with
-these issues or things will fail (often in cryptic ways).
+being sure to substitute the correct values for the ``$FED\_`` variables
+with the values specific to your deployment.
 
-Server/Host name
-----------------
+Step n: Configure Horizon to use federation
+-------------------------------------------
 
-The host and port appear in several contexts:
+On each controller node edit
+``/etc/openstack-dashboard/local_settings`` and make sure the
+following configuration values are set::
 
-* The host and port in the URL the client used
-* The host HTTP header inserted into the HTTP request (derived from
-  the client URL host.
-* The hostname of the front facing proxy the client connects to
-  (actually the FQDN of the IP address the proxy is listening on)
-* The host and port of the backend server which actually handled the client
-  request.
-* The **virtual** host and port of the server that actually handled the client
-  request.
+  OPENSTACK_KEYSTONE_URL = "https://$FED_KEYSTONE_HOST:$FED_KEYSTONE_HTTPS_PORT/v3"
+  OPENSTACK_KEYSTONE_DEFAULT_ROLE = "Member"
+  WEBSSO_ENABLED = True
+  WEBSSO_INITIAL_CHOICE = "saml2"
+  WEBSSO_CHOICES = (
+      ("saml2", _("RH-SSO")),
+      ("credentials", _("Keystone Credentials")),
+  )
 
-It is vital to understand how each of these is utilized otherwise
-there is the opportunity for the wrong host and port to be used with
-the consequence the authentication protocols may fail because they
-cannont validate who the parties in the transaction are.
+being sure to substitute the correct values for the ``$FED\_`` variables
+with the values specific to your deployment.
 
 
-The host the server is running on in the backend will be different
-than the public hostname as seen by the client. Virtual hosting
-(whereby a single server hosts multiple domains) is a mature
-technology so this problem is largly solved. In HTTP the client will
-add a ``HOST`` header in the request (i.e. the public name). When the
-server receives a request it examines the ``HOST`` header and tries to
-find a *viritual server* matching the ``HOST``. In Apache virtual
-servers identify themself with the ``ServerName`` directive in the
-``<VirtualHost>`` block.
 
-The ServerName directive sets the request scheme, hostname and port
-that the server uses to identify itself.
+Step n: Set Horizon to use ``X-Forwarded-Proto`` HTTP header
+------------------------------------------------------------
 
-Additionally, this is used when creating self-referential redirection
-URLs when UseCanonicalName is set to a non-default value.
+On each controller node edit
+``/etc/openstack-dashboard/local_settings`` and uncomment the line::
 
-If no ServerName is specified, the server attempts to deduce the client visible hostname by first asking the operating system for the system hostname, and if that fails, performing a reverse lookup on an IP address present on the system.
-
-If no port is specified in the ServerName, then the server will use
-the port from the incoming request. For optimal reliability and
-predictability, you should specify an explicit hostname and port using
-the ServerName directive.
-
-Sometimes, the server runs behind a device that processes SSL, such as a reverse proxy, load balancer or SSL offload appliance. When this is the case, specify the https:// scheme and the port number to which the clients connect in the ServerName directive to make sure that the server generates the correct self-referential URLs.
-
-With UseCanonicalName On Apache httpd will use the hostname and port specified in the ServerName directive to construct the canonical name for the server. This name is used in all self-referential URLs, and for the values of SERVER_NAME and SERVER_PORT in CGIs.
-
-With UseCanonicalName Off Apache httpd will form self-referential URLs using the hostname and port supplied by the client if any are supplied (otherwise it will use the canonical name, as defined above). These values are the same that are used to implement name-based virtual hosts and are available with the same clients. The CGI variables SERVER_NAME and SERVER_PORT will be constructed from the
+  #SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
-Good thought but that would be redundant with what haproxy is already
-doing, plus you really don't want to set this unless you're behind a
-proxy, which is why it's a good idea to do it via the proxy
-configuration.
 
-To make matters interesting Apache does not interpret this header thus
-responsibility falls to someone else to process it. Mellon needs the
-ServerName in the VirtualHost set to include the https scheme because
-mellon calls Apache to ask what the URL was of a request. Since Apache
-does not process the header and the request was received on http
-behind the proxy it's gets the wrong scheme despite X-Forwarded-Proto
-being present in the request, using a scheme in the ServerName is the
-Apache documented solution to this (ugh). Here is Apache doc and the
-relevant section:
+Troubleshooting
+===============
 
-    https://httpd.apache.org/docs/current/mod/core.html#servername
+How to test the Keystone mapping rules
+--------------------------------------
 
-    Sometimes, the server runs behind a device that processes SSL,
-    such as a reverse proxy, load balancer or SSL offload
-    appliance. When this is the case, specify the https:// scheme and
-    the port number to which the clients connect in the ServerName
-    directive to make sure that the server generates the correct
-    self-referential URLs.
+It is a good idea to verify your mapping rules work as
+expected. The ``keystone-manage`` command line tool allows you to
+exercise a set of mapping rules read from a file against assertion
+data which is also read from a file. For example:
 
-But what about web apps hosted by Apache behind a proxy? It turns out
-it's the web app (or rather the web app framework) responsibility to
-process the header.
+The file ``mapping_rules.json`` has this content::
 
-Since Horizon is a Django web app it's Django responsibility. When
-horizon calls build_absolute_uri() to form the Origin parameter (the
-URL of the dashboard which was incorrectly set to http) it's entirely
-up to Django to identify the scheme because build_absolute_url is
-ultimately implemented by Django. It turns out you can force Django to
-process the X-Forwarded-Proto via a special configuration
-directive. This is documented here:
-
-https://docs.djangoproject.com/en/1.10/ref/settings/#secure-proxy-ssl-header
-
-This can be enabled in the /etc/openstack-dashboard/local_settings
-file by uncommenting this line:
-
-#SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-Note, Django prefixes the header with "HTTP_" and converts hyphens to
-underscores.
-
-After uncommenting this the Origin parameter correctly used the https scheme.
-
-Also interesting to note is that even when setting the ServerName to
-include the https scheme the Django call build_absolute_url() still
-did not use the https scheme. Apparently for Django you must use the
-SECURE_PROXY_SSL_HEADER override, the ServerName trick won't work.
-
-Whats (not) so fun about all this is each component handles this
-differently requiring a slightly different configuration per
-component.
+  [
+      {
+          "local": [
+              {
+                  "user": {
+                      "name": "{0}"
+                  },
+                  "group": {
+                      "domain": {
+                          "name": "Default"
+                      },
+                      "name": "federated_users"
+                  }
+              }
+          ],
+          "remote": [
+              {
+                  "type": "MELLON_NAME_ID"
+              },
+              {
+                  "type": "MELLON_groups",
+                  "any_one_of": ["openstack-users"]
+              }
+          ]
+      }
+  ]
 
 
+The file ``assertion_data.txt`` has this content::
+
+  MELLON_NAME_ID: 'G-90eb44bc-06dc-4a90-aa6e-fb2aa5d5b0de
+  MELLON_groups: openstack-users;ipausers
+
+If you then run this command::
+
+  % keystone-manage mapping_engine --rules mapping_rules.json --input assertion_data.txt
+
+You should get this mapped result::
+
+  {
+    "group_ids": [],
+    "user": {
+      "domain": {
+        "id": "Federated"
+      },
+      "type": "ephemeral",
+      "name": "'G-90eb44bc-06dc-4a90-aa6e-fb2aa5d5b0de"
+    },
+    "group_names": [
+      {
+        "domain": {
+          "name": "Default"
+        },
+        "name": "federated_users"
+      }
+    ]
+  }
+
+.. Tip::
+   If you can also supply the ``--engine-debug`` command line argument
+   which will emit diagnostic information concerning how the
+   mapping rules are being evaluated.
+
+
+
+How to determine actual assertion values seen by Keystone
+---------------------------------------------------------
+
+The *mapped* assertion values Keystone will utilize are passed as CGI
+environment variables. To get a dump of what those environment
+variables are you can do the following:
+
+1. Create the following test script in
+``/var/www/cgi-bin/keystone/test`` with the following content::
+
+    import pprint
+    import webob
+    import webob.dec
+
+
+    @webob.dec.wsgify
+    def application(req):
+        return webob.Response(pprint.pformat(req.environ),
+                              content_type='application/json')
+
+2. Edit the ``/etc/httpd/conf.d/10-keystone_wsgi_main.conf`` file
+   setting it to run the ``test`` script by temporarily modifying
+   the ``WSGIScriptAlias`` directive like this::
+
+     WSGIScriptAlias "/v3/auth/OS-FEDERATION/websso/saml2" "/var/www/cgi-bin/keystone/test"
+
+
+3. Restart httpd like this::
+
+     systemctl restart httpd
+
+4. Then, try login again and review the information that the script
+   dumps out. When finished, remember to restore  the
+   ``WSGIScriptAlias`` directive, and restart the httpd service again.
+
+How to see the SAML messages exchanged between the SP and IdP
+-------------------------------------------------------------
+
+The ``SAMLTracer`` Firefox add-on is a wonderful tool for capturing
+and displaying the SAML messages exchanged between the SP and the IdP.
+
+1. Install ``SAMLTracer`` from this URL:
+   https://addons.mozilla.org/en-US/firefox/addon/saml-tracer/
+
+2. Enable ``SAMLTracer`` from the Firefox menu. A ``SAMLTracer``
+   pop-up window will appear in which all browser requests are
+   displayed. If a request is detected as a SAML message a special
+   ``SAML`` icon is added to the request.
+
+3. Initiate SSO login from the Firefox browser.
+
+4. In the ``SAMLTracer`` window find the first ``SAML`` message and
+   click on it. Use the ``SAML `` tab in the window to see the decoded
+   SAML message (note, the tool is not capable of decrypting encrypted
+   content in the body of the message, if you need to see encrypted
+   content you must disable encryption in the metadata). The first
+   SAML message should be an ``AuthnRequest`` sent by the SP to the
+   IdP. The second SAML message should be the assertion response sent
+   by the IdP. Since the SAML HTTP-Redirect profile is being used the
+   Assertion response will be wrapped in a POST. Click on the ``SAML``
+   tab to see the contents of the assertion.
 
 Glossary
 ========

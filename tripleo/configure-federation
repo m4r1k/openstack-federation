@@ -30,8 +30,8 @@ function show_variables {
 
     echo
 
-    echo "FED_MELLON_HOST: $FED_MELLON_HOST"
-    echo "FED_MELLON_HTTPS_PORT: $FED_MELLON_HTTPS_PORT"
+    echo "FED_KEYSTONE_HOST: $FED_KEYSTONE_HOST"
+    echo "FED_KEYSTONE_HTTPS_PORT: $FED_KEYSTONE_HTTPS_PORT"
     echo "mellon_http_url: $mellon_http_url"
     echo "mellon_root: $mellon_root"
     echo "mellon_endpoint: $mellon_endpoint"
@@ -171,8 +171,8 @@ function client_install {
     local status=0
     local cmd="sudo keycloak-httpd-client-install \
    --client-originate-method registration \
-   --mellon-https-port $FED_MELLON_HTTPS_PORT \
-   --mellon-hostname $FED_MELLON_HOST  \
+   --mellon-https-port $FED_KEYSTONE_HTTPS_PORT \
+   --mellon-hostname $FED_KEYSTONE_HOST  \
    --mellon-root $mellon_root \
    --keycloak-server-url $FED_RHSSO_URL  \
    --keycloak-admin-password  $FED_RHSSO_ADMIN_PASSWORD \
@@ -608,7 +608,7 @@ mellon_endpoint=`echo ${mellon_endpoint} | perl -pe 's!^[ /]*(.*?)[ /]*$!\1!'`
 mellon_root="/${mellon_root}"
 
 mellon_endpoint_path="${mellon_root}/${mellon_endpoint}"
-mellon_http_url="https://${FED_MELLON_HOST}:${FED_MELLON_HTTPS_PORT}"
+mellon_http_url="https://${FED_KEYSTONE_HOST}:${FED_KEYSTONE_HTTPS_PORT}"
 mellon_entity_id="${mellon_http_url}${mellon_endpoint_path}/metadata"
 
 openstack_mapping_file="${stage_dir}/mapping_${FED_OPENSTACK_IDP_NAME}_saml2.json"

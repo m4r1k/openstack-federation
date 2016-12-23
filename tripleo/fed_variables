@@ -30,11 +30,11 @@ FED_RHSSO_REALM="openstack"
 # Host name of the mellon server
 # Note, this is identical to the Keystone server since Keystone is
 # being front by Apache which is protecting it's resources with mellon.
-FED_MELLON_HOST="overcloud.localdomain"
+FED_KEYSTONE_HOST="overcloud.localdomain"
 
-# Port number mellon is running on the FED_MELLON_HOST
+# Port number mellon is running on the FED_KEYSTONE_HOST
 # Note, this is identical to the Keystone server port
-FED_MELLON_HTTPS_PORT=13000
+FED_KEYSTONE_HTTPS_PORT=13000
 
 # Name assigned in Openstack to our IdP
 FED_OPENSTACK_IDP_NAME="rhsso"
