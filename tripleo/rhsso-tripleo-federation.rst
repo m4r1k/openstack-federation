@@ -1,29 +1,3 @@
-auth/methods:
-        value: external,password,token,oauth1,mapped
-federation/trusted_dashboard:
-        value: http://controller.lab.local/dashboard/auth/websso/
-
-        trusted_dashboard = https://$FED_KEYSTONE_HOST/dashboard/auth/websso/
-
-        Note: the host is $FED_KEYSTONE_HOST only because TripleO
-        co-locates both Keystone and Horizon on the same host. If
-        Horizon is running on a different host than Keystone adjust
-        accordingly.
-
-
-federation/sso_callback_template:
-        value: /etc/keystone/sso_callback_template.html
-
-        set in /etc/keystone/keystone.conf
-
-federation/remote_id_attribute:
-        value: MELLON_IDP
-
-        Note this value is passed because of the "MellonIdP IDP"
-        directive in the mellon httpd configuration file.
-
-
-
 Introduction
 ============
 
@@ -1048,7 +1022,59 @@ the RH-SSO IdP). This can be done like this::
    ./configure-federation fetch-sp-archive
 
 
-Step 8: Prevent puppet from deleting unmanaged httpd files
+Step n: Use proxy persistence for Keystone
+------------------------------------------
+
+With high availability any one of multiple backend servers might field
+a request. Because of the number of redirections utilized in SAML and
+the fact each of those redirections involves state information it is
+vital the same server will process all the transactions. In addition a
+session will be established by ``mod_auth_mellon``. Currently
+``mod_auth_mellon`` is not capable of sharing it's state information
+across multiple server therefore we must configure HAProxy to always
+direct requests from a client to the same server each time.
+
+HAProxy can bind a client to the same server via either affinity or
+persistence. This article on `HAProxy Sticky Sessions
+<http://blog.haproxy.com/2012/03/29/load-balancing-affinity-persistence-sticky-sessions-what-you-need-to-know/>`_
+provides good back ground material.
+
+What is the difference between Persistence and Affinity? Affinity is
+when information from a layer below the application layer is used to
+pin a client request to a single server. Persistence is when
+Application layer information binds a client to a single server sticky
+session. The main advantage of the persistence over affinity is
+it is much more accurate.
+
+Persistence is implemented though the use of cookies. The HAProxy
+``cookie`` directive names the cookie which will be used for
+persistence along with parameters controlling it's use. The HAProxy
+``server`` directive has a ``cookie`` option that sets the value of
+the cookie, it should be set to the name of the server. If an incoming
+request does not have a cookie identifying the backend server then
+HAProxy selects a server based on it's configured balancing
+algorithm. HAProxy assures the cookie is set to the name of the
+selected server in the response. If the incoming request has a cookie
+identifying a backend server then HAProxy automatically selects that
+server to handle the request.
+
+To enable persistence in the ``keystone_public`` block of the
+``/etc/haproxy/haproxy.cfg`` configuration this line must be added::
+
+  cookie SERVERID insert indirect nocache
+
+This says ``SERVERID`` will be the name of our persistence
+cookie. Then we must edit each ``server`` line and add ``cookie
+<server-name>`` as an additional option. For example::
+
+  server controller-0 cookie controller-0
+  server controller-1 cookie controller-1
+
+Note, the other parts of the server directive have been omitted for
+clarity.
+
+
+Step n: Prevent puppet from deleting unmanaged httpd files
 ----------------------------------------------------------
 
 By default the Puppet Apache module will purge any files in the Apache
@@ -1073,7 +1099,7 @@ To override the ``apache::purge_configs`` flag we will create a puppet
 file containing the override and add the override file to the list of
 puppet files utilized when ``overcloud_deploy.sh`` is run.
 
-Create this file ``deployment/puppet_override.yaml`` with this content::
+Create this file ``deployment/puppet_override_apache.yaml`` with this content::
 
   parameter_defaults:
     ControllerExtraConfig:
@@ -1084,13 +1110,76 @@ Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
 
-  -e /home/stack/deployment/puppet_override.yaml \
+  -e /home/stack/deployment/puppet_override_apache.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
 
 .. Tip::
    Use ``configure-federation`` script to perform the above.
 
-   ./configure-federation puppet-override
+   ./configure-federation puppet-override-apache
+
+
+Step n: Configure Keystone for federation
+-----------------------------------------
+
+    keystone::using_domain_config: true
+
+
+set in /etc/keystone/keystone.conf
+
+auth/methods:
+        value: external,password,token,oauth1,mapped
+federation/trusted_dashboard:
+        value: https://$FED_KEYSTONE_HOST/dashboard/auth/websso/
+
+        Note: the host is $FED_KEYSTONE_HOST only because TripleO
+        co-locates both Keystone and Horizon on the same host. If
+        Horizon is running on a different host than Keystone adjust
+        accordingly.
+
+federation/sso_callback_template:
+        value: /etc/keystone/sso_callback_template.html
+
+federation/remote_id_attribute:
+        value: MELLON_IDP
+
+        Note this value is passed because of the "MellonIdP IDP"
+        directive in the mellon httpd configuration file.
+
+
+
+_DEFAULT_AUTH_METHODS = ['external', 'password', 'token', 'oauth1']
+methods = cfg.ListOpt(
+    'methods',
+    default=constants._DEFAULT_AUTH_METHODS,
+    help=utils.fmt("""
+Allowed authentication methods.
+
+
+    'trusted_dashboard',
+    default=[],
+    help=utils.fmt("""
+A list of trusted dashboard hosts. Before accepting a Single Sign-On request to
+return a token, the origin host must be a member of this list. This
+configuration option may be repeated for multiple values. You must set this in
+order to use web-based SSO flows. For example:
+
+sso_callback_template = cfg.StrOpt(
+    'sso_callback_template',
+    default='/etc/keystone/sso_callback_template.html',
+    help=utils.fmt("""
+Absolute path to an HTML file used as a Single Sign-On callback handler. This
+page is expected to redirect the user from keystone back to a trusted dashboard
+host, by form encoding a token in a POST request. Keystone's default value
+should be sufficient for most deployments.
+
+remote_id_attribute = cfg.StrOpt(
+    'remote_id_attribute',
+    help=utils.fmt("""
+Value to be used to obtain the entity ID of the Identity Provider from the
+environment. For `mod_shib`, this would be `Shib-Identity-Provider`. For For
+`mod_auth_openidc`, this could be `HTTP_OIDC_ISS`. For `mod_auth_mellon`, this
+could be `MELLON_IDP`.
 
 
 

@@ -20,7 +20,8 @@ function show_variables {
     echo "base_dir: $base_dir"
     echo "stage_dir: $stage_dir"
     echo "config_tar_file: $config_tar_file"
-    echo "puppet_override_file: $puppet_override_file"
+    echo "puppet_override_apache_file: $puppet_override_apache_file"
+    echo "puppet_override_keystone_file: $puppet_override_keystone_file"
 
     echo
 
@@ -316,16 +317,58 @@ function append_deploy_script {
     return $status
 }
 
-function puppet_override {
+function puppet_override_apache {
     local status=0
-    local pathname=${1:-$puppet_override_file}
-    local deploy_cmd="-e $puppet_override_file"
-
+    local pathname=${1:-$puppet_override_apache_file}
+    local deploy_cmd="-e $pathname"
 
     read -r -d '' contents <<'EOF'
 parameter_defaults:
   ControllerExtraConfig:
     apache::purge_configs: false
+EOF
+
+    if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
+        echo "writing pathname = $pathname with contents"
+        echo -e "$contents"
+    fi
+    if [ $dry_run -ne 0 ]; then
+        return $status
+    fi
+
+    echo -e "$contents" > $pathname
+    status=$?
+    if [ $status -ne 0 ]; then
+        (>&2 echo -e "ERROR failed to write ${pathname}\nstatus = $status")
+    fi
+
+    append_deploy_script $overcloud_deploy_script "$deploy_cmd"
+    status=$?
+
+    return $status
+}
+
+function puppet_override_keystone {
+    local status=0
+    local pathname=${1:-$puppet_override_keystone_file}
+    local deploy_cmd="-e $pathname"
+
+    read -r -d '' contents <<"EOF"
+parameter_defaults:
+  controllerExtraConfig:
+    keystone::using_domain_config: true
+    keystone::config::keystone_config:
+      identity/domain_configurations_from_database:
+        value: true
+      auth/methods:
+        value: external,password,token,oauth1,mapped
+      federation/trusted_dashboard:
+        value: https://$FED_KEYSTONE_HOST/dashboard/auth/websso/
+      federation/sso_callback_template:
+        value: /etc/keystone/sso_callback_template.html
+      federation/remote_id_attribute:
+        value: MELLON_IDP
+
 EOF
 
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
@@ -564,7 +607,8 @@ create-sp-archive
 fetch-sp-archive
 deploy-mellon-configuration
 create-v3-rcfile
-puppet-override
+puppet-override-apache
+puppet-override-keystone
 create-federated-resources
 create-mapping
 openstack-create-idp
@@ -616,7 +660,8 @@ log_file="${stage_dir}/rhsso.log"
 idp_metadata_file="${mellon_app_name}_keycloak_${FED_RHSSO_REALM}_idp_metadata.xml"
 mellon_httpd_config_filename="${mellon_app_name}_mellon_keycloak_${FED_RHSSO_REALM}.conf"
 config_tar_file="${stage_dir}/rhsso_config.tar.gz"
-puppet_override_file="${stage_dir}/puppet_override.yaml"
+puppet_override_apache_file="${stage_dir}/puppet_override_apache.yaml"
+puppet_override_keystone_file="${stage_dir}/puppet_override_keystone.yaml"
 
 #-----------------------------------------------------------------------------
 
@@ -649,8 +694,10 @@ case $action in
         deploy_mellon_configuration ;;
     create-v3-rcfile)
         create_v3_rcfile "$1" ;;
-    puppet-override)
-        puppet_override "$1" ;;
+    puppet-override-apache)
+        puppet_override_apache "$1" ;;
+    puppet-override-keystone)
+        puppet_override_keystone "$1" ;;
     create-federated-resources)
         create_federated_resources ;;
     create-mapping)
