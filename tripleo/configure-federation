@@ -8,7 +8,7 @@ dry_run=0
 verbose=0
 
 base_dir=$(pwd)
-stage_dir="${base_dir}/deployment"
+stage_dir="${base_dir}/fed_deployment"
 
 mellon_root="/v3"
 mellon_endpoint="mellon"
@@ -16,43 +16,7 @@ mellon_app_name="v3"
 
 overcloud_deploy_script="overcloud_deploy.sh"
 
-function show_variables {
-    echo "base_dir: $base_dir"
-    echo "stage_dir: $stage_dir"
-    echo "config_tar_file: $config_tar_file"
-    echo "puppet_override_apache_file: $puppet_override_apache_file"
-    echo "puppet_override_keystone_file: $puppet_override_keystone_file"
-
-    echo
-
-    echo "FED_RHSSO_URL: $FED_RHSSO_URL"
-    echo "FED_RHSSO_ADMIN_PASSWORD: $FED_RHSSO_ADMIN_PASSWORD"
-    echo "FED_RHSSO_REALM: $FED_RHSSO_REALM"
-
-    echo
-
-    echo "FED_KEYSTONE_HOST: $FED_KEYSTONE_HOST"
-    echo "FED_KEYSTONE_HTTPS_PORT: $FED_KEYSTONE_HTTPS_PORT"
-    echo "mellon_http_url: $mellon_http_url"
-    echo "mellon_root: $mellon_root"
-    echo "mellon_endpoint: $mellon_endpoint"
-    echo "mellon_app_name: $mellon_app_name"
-    echo "mellon_endpoint_path: $mellon_endpoint_path"
-    echo "mellon_entity_id: $mellon_entity_id"
-
-    echo
-
-    echo "FED_OPENSTACK_IDP_NAME: $FED_OPENSTACK_IDP_NAME"
-    echo "openstack_mapping_file: $openstack_mapping_file"
-    echo "FED_OPENSTACK_MAPPING_NAME: $FED_OPENSTACK_MAPPING_NAME"
-
-    echo
-
-    echo "idp_metadata_file: $idp_metadata_file"
-    echo "mellon_httpd_config_filename: $mellon_httpd_config_filename"
-}
-
-function do_test {
+function cmd_template {
     local status=0
     local cmd="$1"
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
@@ -70,7 +34,7 @@ function do_test {
     return $status
 }
 
-function do_tests {
+function cmds_template {
     local return_status=0
     declare -a cmds=(
         "date"
@@ -98,11 +62,47 @@ function do_tests {
     return $return_status
 }
 
-function initialize {           # FIXME
+function show_variables {
+    echo "base_dir: $base_dir"
+    echo "stage_dir: $stage_dir"
+    echo "config_tar_filename: $config_tar_filename"
+    echo "config_tar_pathname: $config_tar_pathname"
+    echo "puppet_override_apache_pathname: $puppet_override_apache_pathname"
+    echo "puppet_override_keystone_pathname: $puppet_override_keystone_pathname"
+
+    echo
+
+    echo "FED_RHSSO_URL: $FED_RHSSO_URL"
+    echo "FED_RHSSO_ADMIN_PASSWORD: $FED_RHSSO_ADMIN_PASSWORD"
+    echo "FED_RHSSO_REALM: $FED_RHSSO_REALM"
+
+    echo
+
+    echo "FED_KEYSTONE_HOST: $FED_KEYSTONE_HOST"
+    echo "FED_KEYSTONE_HTTPS_PORT: $FED_KEYSTONE_HTTPS_PORT"
+    echo "mellon_http_url: $mellon_http_url"
+    echo "mellon_root: $mellon_root"
+    echo "mellon_endpoint: $mellon_endpoint"
+    echo "mellon_app_name: $mellon_app_name"
+    echo "mellon_endpoint_path: $mellon_endpoint_path"
+    echo "mellon_entity_id: $mellon_entity_id"
+
+    echo
+
+    echo "FED_OPENSTACK_IDP_NAME: $FED_OPENSTACK_IDP_NAME"
+    echo "openstack_mapping_pathname: $openstack_mapping_pathname"
+    echo "FED_OPENSTACK_MAPPING_NAME: $FED_OPENSTACK_MAPPING_NAME"
+
+    echo
+
+    echo "idp_metadata_filename: $idp_metadata_filename"
+    echo "mellon_httpd_config_filename: $mellon_httpd_config_filename"
+}
+
+function initialize {
     local return_status=0
     declare -a cmds=(
         "mkdir -p \"$stage_dir\""
-        "sudo yum -y install keycloak-httpd-client-install"
     )
 
     if [ $dry_run -ne 0 ]; then
@@ -123,6 +123,44 @@ function initialize {           # FIXME
         done
     fi
     return $return_status
+}
+
+function copy_helper_to_controller {
+    local status=0
+    local controller=${1:-"controller-0"}
+    local cmd="scp configure-federation fed_variables heat-admin@$controller:/home/heat-admin"
+    if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
+        echo $cmd
+    fi
+    if [ $dry_run -ne 0 ]; then
+        return $status
+    fi
+
+    $cmd
+    status=$?
+    if [ $status -ne 0 ]; then
+        (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
+    fi
+    return $status
+}
+
+function install_mod_auth_mellon {
+    local status=0
+    local cmd="sudo yum -y install keycloak-httpd-client-install"
+
+    if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
+        echo $cmd
+    fi
+    if [ $dry_run -ne 0 ]; then
+        return $status
+    fi
+
+    $cmd
+    status=$?
+    if [ $status -ne 0 ]; then
+        (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
+    fi
+    return $status
 }
 
 function create_ipa_service_account {
@@ -204,7 +242,7 @@ function create_sp_archive {
     # variable and get the final quoting correct.
 
     local status=0
-    local cmd="tar -cvzf $config_tar_file --exclude-from $stage_dir/tar_excludes /etc/httpd/saml2 /etc/httpd/conf.d/$mellon_httpd_config_filename"
+    local cmd="tar -cvzf $config_tar_pathname --exclude-from $stage_dir/tar_excludes /etc/httpd/saml2 /etc/httpd/conf.d/$mellon_httpd_config_filename"
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
         echo $cmd
     fi
@@ -225,11 +263,11 @@ EOF
     return $status
 }
 
-function  fetch_sp_archive {
+function fetch_sp_archive {
     local return_status=0
     declare -a cmds=(
-        "scp heat-admin@controller-0:/home/heat-admin/deployment/rhsso_config.tar.gz $stage_dir"
-        "tar -C $stage_dir -xvf $config_tar_file"
+        "scp heat-admin@controller-0:/home/heat-admin/fed_deployment/$config_tar_filename $stage_dir"
+        "tar -C $stage_dir -xvf $config_tar_pathname"
     )
 
     if [ $dry_run -ne 0 ]; then
@@ -254,7 +292,7 @@ function  fetch_sp_archive {
 
 function deploy_mellon_configuration {
     local status=0
-    local cmd="upload-swift-artifacts -f $config_tar_file"
+    local cmd="upload-swift-artifacts -f $config_tar_pathname"
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
         echo $cmd
     fi
@@ -271,7 +309,7 @@ function deploy_mellon_configuration {
 }
 
 function idp_entity_id {
-    local metadata_file=${1:-$idp_metadata_file}
+    local metadata_file=${1:-$idp_metadata_filename}
 
     # Extract the entitID from the metadata file, should really be parsed
     # with an XML xpath but a simple string match is probably OK
@@ -319,7 +357,7 @@ function append_deploy_script {
 
 function puppet_override_apache {
     local status=0
-    local pathname=${1:-$puppet_override_apache_file}
+    local pathname=${1:-$puppet_override_apache_pathname}
     local deploy_cmd="-e $pathname"
 
     read -r -d '' contents <<'EOF'
@@ -350,7 +388,7 @@ EOF
 
 function puppet_override_keystone {
     local status=0
-    local pathname=${1:-$puppet_override_keystone_file}
+    local pathname=${1:-$puppet_override_keystone_pathname}
     local deploy_cmd="-e $pathname"
 
     read -r -d '' contents <<"EOF"
@@ -427,7 +465,7 @@ function create_mapping {
     # Matches documentation
     # http://docs.openstack.org/developer/keystone/federation/federated_identity.html#create-keystone-groups-and-assign-roles
     local status=0
-    local pathname=${1:-$openstack_mapping_file}
+    local pathname=${1:-$openstack_mapping_pathname}
 
     read -r -d '' contents <<'EOF'
 [
@@ -521,7 +559,7 @@ EOF
 
 function openstack_create_idp {
     local status=0
-    local metadata_file="$stage_dir/etc/httpd/saml2/$idp_metadata_file"
+    local metadata_file="$stage_dir/etc/httpd/saml2/$idp_metadata_filename"
     local entity_id
     entity_id=$(idp_entity_id $metadata_file)
     status=$?
@@ -548,7 +586,7 @@ function openstack_create_idp {
 
 function openstack_create_mapping {
     local status=0
-    local mapping_file=${1:-$openstack_mapping_file}
+    local mapping_file=${1:-$openstack_mapping_pathname}
     local mapping_name=${2:-$FED_OPENSTACK_MAPPING_NAME}
     cmd="openstack mapping create --rules $mapping_file $mapping_name"
 
@@ -595,22 +633,25 @@ $prog_name action
 -h --help        print usage
 -n --dry-run     dry run, just print computed command
 -v --verbose     be chatty
--i --idp-url     keycloak URL
 
 action may be one of:
 
 show-variables
 initialize
+copy-helper-to-controller
+install-mod-auth-mellon
 create-ipa-service-account
 client-install
 create-sp-archive
 fetch-sp-archive
 deploy-mellon-configuration
-create-v3-rcfile
+idp-entity-id
+append-deploy-script
 puppet-override-apache
 puppet-override-keystone
 create-federated-resources
 create-mapping
+create-v3-rcfile
 openstack-create-idp
 openstack-create-mapping
 openstack-create-protocol
@@ -655,13 +696,13 @@ mellon_endpoint_path="${mellon_root}/${mellon_endpoint}"
 mellon_http_url="https://${FED_KEYSTONE_HOST}:${FED_KEYSTONE_HTTPS_PORT}"
 mellon_entity_id="${mellon_http_url}${mellon_endpoint_path}/metadata"
 
-openstack_mapping_file="${stage_dir}/mapping_${FED_OPENSTACK_IDP_NAME}_saml2.json"
-log_file="${stage_dir}/rhsso.log"
-idp_metadata_file="${mellon_app_name}_keycloak_${FED_RHSSO_REALM}_idp_metadata.xml"
+openstack_mapping_pathname="${stage_dir}/mapping_${FED_OPENSTACK_IDP_NAME}_saml2.json"
+idp_metadata_filename="${mellon_app_name}_keycloak_${FED_RHSSO_REALM}_idp_metadata.xml"
 mellon_httpd_config_filename="${mellon_app_name}_mellon_keycloak_${FED_RHSSO_REALM}.conf"
-config_tar_file="${stage_dir}/rhsso_config.tar.gz"
-puppet_override_apache_file="${stage_dir}/puppet_override_apache.yaml"
-puppet_override_keystone_file="${stage_dir}/puppet_override_keystone.yaml"
+config_tar_filename="rhsso_config.tar.gz"
+config_tar_pathname="${stage_dir}/${config_tar_filename}"
+puppet_override_apache_pathname="${stage_dir}/puppet_override_apache.yaml"
+puppet_override_keystone_pathname="${stage_dir}/puppet_override_keystone.yaml"
 
 #-----------------------------------------------------------------------------
 
@@ -676,12 +717,14 @@ if [ $dry_run -ne 0 ]; then
 fi
 
 case $action in
-    test)
-        do_test "$1" ;;
     show-var*)
         show_variables ;;
-    initialize)                 # FIXME
+    initialize)
         initialize ;;
+    copy-helper-to-controller)
+        copy_helper_to_controller $1 ;;
+    install-mod-auth-mellon)
+        install_mod_auth_mellon ;;
     create-ipa-service-account)
         create_ipa_service_account ;;
     client-install)

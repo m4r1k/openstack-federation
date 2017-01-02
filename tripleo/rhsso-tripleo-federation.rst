@@ -78,6 +78,14 @@ The following assumptions are made:
   <http://docs.openstack.org/developer/keystone/federation/federated_identity.html>`_
   will be followed.
 
+* On the ``undercloud-0`` node you will install the helper files into
+  the home directory of the ``stack`` user and work in the ``stack``
+  user home directory.
+
+* On the ``controller-0`` node you will install the helper files into
+  the home directory of the ``heat-admin`` user and work in the ``heat-admin``
+  user home directory.
+
 Prerequisites
 -------------
 
@@ -816,7 +824,14 @@ would be::
 Steps
 =====
 
-Step n: Set your deployment variables
+Step 1: Install helper files on undercloud-0
+--------------------------------------------
+
+Copy the ``configure-federation`` and ``fed_variables`` files into the
+``~stack`` home directory on undercloud-0
+
+
+Step 2: Set your deployment variables
 -------------------------------------
 
 The file  ``fed_variables`` contains variables specific to your
@@ -827,19 +842,35 @@ variable will utilize the ``$`` variable syntax, e.g. ``$FED_``. Make
 sure every ``FED_`` variable in ``fed_variables`` is provided a value.
 
 
-Step n: Initialize working environment
---------------------------------------
+Step 3: Copy helper files from undercloud-0 to controller-0
+-----------------------------------------------------------
+
+Copy the ``configure-federation`` and the edited ``fed_variables`` from the
+``~stack`` home directory on undercloud-0 to the ``~heat-admin`` home
+directory on controller-0, this can be done like this::
+
+  % scp configure-federation fed_variables heat-admin@controller-0:/home/heat-admin
+
+.. Tip::
+   
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation copy-helper-to-controller
+
+
+Step 4: Initialize working environment on undercloud node
+---------------------------------------------------------
 
 On the undercloud node:
 
 1. Become the stack user.
-2. Create the``deployment`` directory, this is where we will stash
+2. Create the``fed_deployment`` directory, this is where we will stash
    files as we work.
 
 This can be done like this::
 
   % su - stack
-  % mkdir deployment
+  % mkdir fed_deployment
 
 
 .. Tip::
@@ -847,7 +878,46 @@ This can be done like this::
 
    ./configure-federation initialize
 
-Step 2: Use the Keystone Version 3 API
+Step 5: Initialize working environment on controller-0
+------------------------------------------------------
+
+From the undercloud node:
+
+1. ssh into the controller-0 node as the ``heat-admin`` user
+2. Create the``fed_deployment`` directory, this is where we will stash
+   files as we work.
+
+This can be done like this::
+
+  % ssh heat-admin@controller-0
+  % mkdir fed_deployment
+
+
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation initialize
+
+Step 6: Install mod_auth_mellon on each controller node
+-------------------------------------------------------
+
+From the undercloud node:
+
+1. ssh into the controller-n node as the ``heat-admin`` user
+2. install the mod_auth_mellon RPM
+
+This can be done like this::
+
+  % ssh heat-admin@controller-n # replace n with controller number
+  % sudo yum -y install keycloak-httpd-client-install
+
+
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation install-mod-auth-mellon
+
+Step 7: Use the Keystone Version 3 API
 --------------------------------------
 
 In order to use the ``openstack`` command line client to work with the
@@ -888,7 +958,7 @@ From this point forward to work with the overcloud you will use the
   % source overcloudrc.v3
 
 
-Step 3: Add the RH-SSO FQDN to /etc/hosts on each controller
+Step 8: Add the RH-SSO FQDN to /etc/hosts on each controller
 ------------------------------------------------------------
 
 mellon will be running on each controller node. mellon will be
@@ -903,7 +973,7 @@ to the /etc/hosts file on *each* controller node::
   # HEAT_HOSTS_START - Do not edit manually within this section!
   $FED_RHSSO_IP_ADDR $FED_RHSSO_FQDN
 
-Step 4: Install & configure mellon on controller node
+Step 9: Install & configure mellon on controller node
 -----------------------------------------------------
 
 The ``keycloak-httpd-client-install`` tool performs many of the steps
@@ -965,8 +1035,8 @@ You should see output similar to this::
   [Step 16] Completed Successfully
 
 
-Step 5: Adjust the mellon configuration
----------------------------------------
+Step 10: Adjust the mellon configuration
+----------------------------------------
 
 Although ``keycloak-httpd-client-install`` does a good job of
 configuring mellon it cannot know all the need of a particular
@@ -993,17 +1063,17 @@ example::
       MellonMergeEnvVars On ";"
   </Location>
 
-Step 6: Make an archive of the generated configuration files
-------------------------------------------------------------
+Step 11: Make an archive of the generated configuration files
+-------------------------------------------------------------
 
 Because the mellon configuration need to be replicated across all
 controller nodes we will create an archive of the files thus allowing
 us to install the exact same file contents on each controller node. We
-will locate the archive in the  ``~heat-admin/deployment`` sub-directory
+will locate the archive in the  ``~heat-admin/fed_deployment`` sub-directory
 
 You can create a compressed tar archive like this::
 
-  % mkdir deployment
+  % mkdir fed_deployment
   % tar -cvzf rhsso_config.tar.gz \
   --exclude '*.orig' \
   --exclude '*~' \
@@ -1015,17 +1085,17 @@ You can create a compressed tar archive like this::
 
    ./configure-federation create-sp-archive
 
-Step 7: Retrieve the mellon configuration archive
--------------------------------------------------
+Step 12: Retrieve the mellon configuration archive
+--------------------------------------------------
 
 Back on the undercloud node we need to fetch the archive we just
 created. We also need to unarchive the files because in subsequent
 steps we will need access to some of the data (e.g. the entityID of
 the RH-SSO IdP). This can be done like this::
 
-  % scp heat-admin@controller-0:/home/heat-admin/deployment/rhsso_config.tar.gz \
-  ~/deployment
-  % tar -C deployment -xvf deployment/rhsso_config.tar.gz
+  % scp heat-admin@controller-0:/home/heat-admin/fed_deployment/rhsso_config.tar.gz \
+  ~/fed_deployment
+  % tar -C fed_deployment -xvf fed_deployment/rhsso_config.tar.gz
 
 .. Tip::
    Use ``configure-federation`` script to perform the above.
@@ -1033,60 +1103,8 @@ the RH-SSO IdP). This can be done like this::
    ./configure-federation fetch-sp-archive
 
 
-Step n: Use proxy persistence for Keystone
-------------------------------------------
-
-With high availability any one of multiple backend servers might field
-a request. Because of the number of redirections utilized in SAML and
-the fact each of those redirections involves state information it is
-vital the same server will process all the transactions. In addition a
-session will be established by ``mod_auth_mellon``. Currently
-``mod_auth_mellon`` is not capable of sharing it's state information
-across multiple server therefore we must configure HAProxy to always
-direct requests from a client to the same server each time.
-
-HAProxy can bind a client to the same server via either affinity or
-persistence. This article on `HAProxy Sticky Sessions
-<http://blog.haproxy.com/2012/03/29/load-balancing-affinity-persistence-sticky-sessions-what-you-need-to-know/>`_
-provides good back ground material.
-
-What is the difference between Persistence and Affinity? Affinity is
-when information from a layer below the application layer is used to
-pin a client request to a single server. Persistence is when
-Application layer information binds a client to a single server sticky
-session. The main advantage of the persistence over affinity is
-it is much more accurate.
-
-Persistence is implemented though the use of cookies. The HAProxy
-``cookie`` directive names the cookie which will be used for
-persistence along with parameters controlling it's use. The HAProxy
-``server`` directive has a ``cookie`` option that sets the value of
-the cookie, it should be set to the name of the server. If an incoming
-request does not have a cookie identifying the backend server then
-HAProxy selects a server based on it's configured balancing
-algorithm. HAProxy assures the cookie is set to the name of the
-selected server in the response. If the incoming request has a cookie
-identifying a backend server then HAProxy automatically selects that
-server to handle the request.
-
-To enable persistence in the ``keystone_public`` block of the
-``/etc/haproxy/haproxy.cfg`` configuration this line must be added::
-
-  cookie SERVERID insert indirect nocache
-
-This says ``SERVERID`` will be the name of our persistence
-cookie. Then we must edit each ``server`` line and add ``cookie
-<server-name>`` as an additional option. For example::
-
-  server controller-0 cookie controller-0
-  server controller-1 cookie controller-1
-
-Note, the other parts of the server directive have been omitted for
-clarity.
-
-
-Step n: Prevent puppet from deleting unmanaged httpd files
-----------------------------------------------------------
+Step 13: Prevent puppet from deleting unmanaged httpd files
+-----------------------------------------------------------
 
 By default the Puppet Apache module will purge any files in the Apache
 configuration directories it is not managing. This is sensible
@@ -1110,7 +1128,7 @@ To override the ``apache::purge_configs`` flag we will create a puppet
 file containing the override and add the override file to the list of
 puppet files utilized when ``overcloud_deploy.sh`` is run.
 
-Create this file ``deployment/puppet_override_apache.yaml`` with this content::
+Create this file ``fed_deployment/puppet_override_apache.yaml`` with this content::
 
   parameter_defaults:
     ControllerExtraConfig:
@@ -1121,7 +1139,7 @@ Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
 
-  -e /home/stack/deployment/puppet_override_apache.yaml \
+  -e /home/stack/fed_deployment/puppet_override_apache.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
 
 .. Tip::
@@ -1130,8 +1148,8 @@ argument. For example::
    ./configure-federation puppet-override-apache
 
 
-Step n: Configure Keystone for federation
------------------------------------------
+Step 14: Configure Keystone for federation
+------------------------------------------
 
 We want to utilize domains in Keystone which requires some extra
 setup. The Keystone puppet module knows how to perform this extra
@@ -1184,7 +1202,7 @@ federation:remote_id_attribute
   this is set in the mellon configuration file via the ``MellonIdP
   IDP`` directive.
 
-Create this file ``deployment/puppet_override_keystone.yaml`` with this content::
+Create this file ``fed_deployment/puppet_override_keystone.yaml`` with this content::
 
   parameter_defaults:
     controllerExtraConfig:
@@ -1205,7 +1223,7 @@ Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
 
-  -e /home/stack/deployment/puppet_override_keystone.yaml \
+  -e /home/stack/fed_deployment/puppet_override_keystone.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
 
 .. Tip::
@@ -1216,13 +1234,13 @@ argument. For example::
 
 
 
-Step 9: Deploy the mellon configuration archive
------------------------------------------------
+Step 15: Deploy the mellon configuration archive
+------------------------------------------------
 
 We'll use swift artifacts to install the mellon configuration files on
 each controller node. This can be done like this::
 
-  % upload-swift-artifacts -f deployment/rhsso_config.tar.gz
+  % upload-swift-artifacts -f fed_deployment/rhsso_config.tar.gz
 
 .. Tip::
    Use ``configure-federation`` script to perform the above.
@@ -1230,8 +1248,8 @@ each controller node. This can be done like this::
    ./configure-federation deploy-mellon-configuration
 
 
-Step n: Redeploy the overcloud
-------------------------------
+Step 16: Redeploy the overcloud
+-------------------------------
 
 In prior steps we made changes to the puppet yaml configuration files
 and swift artifacts. These now need to be applied which can be
@@ -1249,8 +1267,60 @@ performed like this::
    configuration files on the overcloud controller nodes.
 
 
-Step 10: Create federated resources
------------------------------------
+Step 17: Use proxy persistence for Keystone
+-------------------------------------------
+
+With high availability any one of multiple backend servers might field
+a request. Because of the number of redirections utilized in SAML and
+the fact each of those redirections involves state information it is
+vital the same server will process all the transactions. In addition a
+session will be established by ``mod_auth_mellon``. Currently
+``mod_auth_mellon`` is not capable of sharing it's state information
+across multiple server therefore we must configure HAProxy to always
+direct requests from a client to the same server each time.
+
+HAProxy can bind a client to the same server via either affinity or
+persistence. This article on `HAProxy Sticky Sessions
+<http://blog.haproxy.com/2012/03/29/load-balancing-affinity-persistence-sticky-sessions-what-you-need-to-know/>`_
+provides good back ground material.
+
+What is the difference between Persistence and Affinity? Affinity is
+when information from a layer below the application layer is used to
+pin a client request to a single server. Persistence is when
+Application layer information binds a client to a single server sticky
+session. The main advantage of the persistence over affinity is
+it is much more accurate.
+
+Persistence is implemented though the use of cookies. The HAProxy
+``cookie`` directive names the cookie which will be used for
+persistence along with parameters controlling it's use. The HAProxy
+``server`` directive has a ``cookie`` option that sets the value of
+the cookie, it should be set to the name of the server. If an incoming
+request does not have a cookie identifying the backend server then
+HAProxy selects a server based on it's configured balancing
+algorithm. HAProxy assures the cookie is set to the name of the
+selected server in the response. If the incoming request has a cookie
+identifying a backend server then HAProxy automatically selects that
+server to handle the request.
+
+To enable persistence in the ``keystone_public`` block of the
+``/etc/haproxy/haproxy.cfg`` configuration this line must be added::
+
+  cookie SERVERID insert indirect nocache
+
+This says ``SERVERID`` will be the name of our persistence
+cookie. Then we must edit each ``server`` line and add ``cookie
+<server-name>`` as an additional option. For example::
+
+  server controller-0 cookie controller-0
+  server controller-1 cookie controller-1
+
+Note, the other parts of the server directive have been omitted for
+clarity.
+
+
+Step 18: Create federated resources
+------------------------------------
 
 Recall from the introduction that we are going to follow the example
 setup for federation in the `Create keystone groups and assign roles
@@ -1271,8 +1341,8 @@ having sourced the ``overcloudrc.v3`` file::
    ./configure-federation create-federated-resources
 
 
-Step n: Create the identity provider in OpenStack
--------------------------------------------------
+Step 19: Create the identity provider in OpenStack
+--------------------------------------------------
 
 We must register our IdP with Keystone. This operation provides a
 binding between the entityID in the SAML assertion and the name of the
@@ -1283,8 +1353,8 @@ in the
 ``/etc/httpd/saml2/v3_keycloak_$FED_RHSSO_REALM_idp_metadata.xml``
 file. Recall from an earlier step we fetched the an archive of the
 mellon configuration files and then unarchived it in our
-``deployment`` work area. Thus you can find the IdP metadata in
-``deployment/etc/httpd/saml2/v3_keycloak_$FED_RHSSO_REALM_idp_metadata.xml``. In
+``fed_deployment`` work area. Thus you can find the IdP metadata in
+``fed_deployment/etc/httpd/saml2/v3_keycloak_$FED_RHSSO_REALM_idp_metadata.xml``. In
 the IdP metadata file is a ``<EntityDescriptor>`` element with a
 ``entityID`` attribute. We need the value of the ``entityID``
 attribute and for illustration purposes we'll assume it's been stored
@@ -1300,7 +1370,7 @@ can be done like this::
    ./configure-federation openstack-create-idp
 
 
-Step 11: Create mapping file and upload into Keystone
+Step 20: Create mapping file and upload into Keystone
 -----------------------------------------------------
 
 Keystone performs a mapping from the SAML assertion it receives from
@@ -1364,12 +1434,12 @@ in Keystone.
 
 To create the mapping in Keystone you must create a file containing
 the mapping rules and then upload it into Keystone giving a name so it
-can be referenced. We will create the mapping file in our deployment
-directory, e.g. ``deployment/mapping_rhsso_saml2.json`` and assign the
+can be referenced. We will create the mapping file in our fed_deployment
+directory, e.g. ``fed_deployment/mapping_rhsso_saml2.json`` and assign the
 mapping rules the name ``$FED_OPENSTACK_MAPPING_NAME``. The mapping
 file can then be uploaded like this::
 
-  openstack mapping create --rules deployment/mapping_rhsso_saml2.json $FED_OPENSTACK_MAPPING_NAME
+  openstack mapping create --rules fed_deployment/mapping_rhsso_saml2.json $FED_OPENSTACK_MAPPING_NAME
 
 .. Tip::
    Use ``configure-federation`` script to perform the above as 2 steps.
@@ -1382,8 +1452,8 @@ file can then be uploaded like this::
    ``openstack-create-mapping`` performs the upload of the file
 
 
-Step n: Create a Keystone federation protocol
----------------------------------------------
+Step 21: Create a Keystone federation protocol
+----------------------------------------------
 
 Keystone binds an IdP using a specific protocol (e.g. saml2) to a
 mapping via a Keystone protocol definition. To establish this binding
@@ -1400,8 +1470,8 @@ do the following::
    ./configure-federation openstack-create-protocol
 
 
-Step n: Fully qualify the Keystone scheme, host, and port
----------------------------------------------------------
+Step 22: Fully qualify the Keystone scheme, host, and port
+----------------------------------------------------------
 
 On each controller node edit
 ``/etc/httpd/conf.d/10-keystone_wsgi_main.conf`` to assure the
@@ -1418,8 +1488,8 @@ enable the ``UseCanonicalName`` directive For example::
 being sure to substitute the correct values for the ``$FED\_`` variables
 with the values specific to your deployment.
 
-Step n: Configure Horizon to use federation
--------------------------------------------
+Step 23: Configure Horizon to use federation
+--------------------------------------------
 
 On each controller node edit
 ``/etc/openstack-dashboard/local_settings`` and make sure the
@@ -1439,8 +1509,8 @@ with the values specific to your deployment.
 
 
 
-Step n: Set Horizon to use ``X-Forwarded-Proto`` HTTP header
-------------------------------------------------------------
+Step 24: Set Horizon to use ``X-Forwarded-Proto`` HTTP header
+-------------------------------------------------------------
 
 On each controller node edit
 ``/etc/openstack-dashboard/local_settings`` and uncomment the line::
