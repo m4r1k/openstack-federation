@@ -102,7 +102,7 @@ function show_variables {
 function initialize {
     local return_status=0
     declare -a cmds=(
-        "mkdir -p \"$stage_dir\""
+        "mkdir -p $stage_dir"
     )
 
     if [ $dry_run -ne 0 ]; then
@@ -128,7 +128,7 @@ function initialize {
 function copy_helper_to_controller {
     local status=0
     local controller=${1:-"controller-0"}
-    local cmd="scp configure-federation fed_variables heat-admin@$controller:/home/heat-admin"
+    local cmd="scp configure-federation fed_variables heat-admin@${controller}:/home/heat-admin"
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
         echo $cmd
     fi
@@ -391,7 +391,7 @@ function puppet_override_keystone {
     local pathname=${1:-$puppet_override_keystone_pathname}
     local deploy_cmd="-e $pathname"
 
-    read -r -d '' contents <<"EOF"
+    read -r -d '' contents <<EOF
 parameter_defaults:
   controllerExtraConfig:
     keystone::using_domain_config: true
@@ -645,8 +645,6 @@ client-install
 create-sp-archive
 fetch-sp-archive
 deploy-mellon-configuration
-idp-entity-id
-append-deploy-script
 puppet-override-apache
 puppet-override-keystone
 create-federated-resources
@@ -661,7 +659,7 @@ EOF
 
 #-----------------------------------------------------------------------------
 # options may be followed by one colon to indicate they have a required argument
-if ! options=$(getopt -o hnv: -l help,dry-run,verbose -- "$@")
+if ! options=$(getopt -o hnv -l help,dry-run,verbose -- "$@")
 then
     # something went wrong, getopt will put out an error message for us
     exit 1
@@ -722,7 +720,7 @@ case $action in
     initialize)
         initialize ;;
     copy-helper-to-controller)
-        copy_helper_to_controller $1 ;;
+        copy_helper_to_controller "$1" ;;
     install-mod-auth-mellon)
         install_mod_auth_mellon ;;
     create-ipa-service-account)
