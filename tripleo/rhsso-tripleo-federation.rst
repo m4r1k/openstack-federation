@@ -1,8 +1,6 @@
 Introduction
 ============
 
-FIXME: add section on setting up sshuttle
-
 This document will provide you with instructions and guidance for
 setting up Openstack Keystone federation in a high availability TripleO
 environment authenticating against a Red Hat Single Sign-On (RH-SSO)
@@ -258,6 +256,8 @@ There are various approaches to solving the problem. Because SAML is
 sensitive to host, port and protocol and because we are configuring
 SAML behind a high availability proxy (HAProxy) we must deal with
 these issues or things will fail (often in cryptic ways).
+
+.. _server_name_explanation:
 
 Server/Host name
 ----------------
@@ -560,8 +560,8 @@ RH-SSO to return specific attributes in the assertion that we depend
 upon. When Keystone receives the SAML assertion it will map those
 attributes into metadata about the user which Keystone can
 understand. The process of mapping IdP attributes into Keystone data
-is called Federated Mapping and will be elsewhere in this document
-(FIXME, link to section)
+is called Federated Mapping and will be elsewhere in this document,
+see :ref:`mapping_explanation`
 
 RH-SSO calls the process of adding returned attributes "Protocol
 Mapping". Protocol mapping is a property of the RH-SSO client
@@ -758,8 +758,8 @@ HTTP header to be inserted into the request::
     option forwardfor
 
 
-FIXME refer to section which discusses forwarded proto, redirects,
-ServerName, etc.
+See :ref:`server_name_explanation` for more information on forwarded
+proto, redirects, ServerName, etc.
 
 This line will assure only HTTPS is used on the public IP address::
 
@@ -1369,6 +1369,8 @@ can be done like this::
 
    ./configure-federation openstack-create-idp
 
+
+.. _mapping_explanation:
 
 Step 20: Create mapping file and upload into Keystone
 -----------------------------------------------------
