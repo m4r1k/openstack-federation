@@ -622,8 +622,8 @@ Add group information to assertion
 Steps
 =====
 
-Step 1: Determine IP address and matching FQDN.
----------------------------------------
+Step 1: Determine IP address and matching FQDN
+----------------------------------------------
 
 The following nodes will need an FQDN:
 
