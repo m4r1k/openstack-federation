@@ -622,7 +622,7 @@ Add group information to assertion
 Steps
 =====
 
-Determine IP address and matching FQDN.
+Step 1: Determine IP address and matching FQDN.
 ---------------------------------------
 
 The following nodes will need an FQDN:
@@ -821,17 +821,14 @@ would be::
    address. You need to use the *public IP address*.
 
 
-Steps
-=====
-
-Step 1: Install helper files on undercloud-0
+Step 2: Install helper files on undercloud-0
 --------------------------------------------
 
 Copy the ``configure-federation`` and ``fed_variables`` files into the
 ``~stack`` home directory on undercloud-0
 
 
-Step 2: Set your deployment variables
+Step 3: Set your deployment variables
 -------------------------------------
 
 The file  ``fed_variables`` contains variables specific to your
@@ -842,7 +839,7 @@ variable will utilize the ``$`` variable syntax, e.g. ``$FED_``. Make
 sure every ``FED_`` variable in ``fed_variables`` is provided a value.
 
 
-Step 3: Copy helper files from undercloud-0 to controller-0
+Step 4: Copy helper files from undercloud-0 to controller-0
 -----------------------------------------------------------
 
 Copy the ``configure-federation`` and the edited ``fed_variables`` from the
@@ -858,7 +855,7 @@ directory on controller-0, this can be done like this::
    ./configure-federation copy-helper-to-controller
 
 
-Step 4: Initialize working environment on undercloud node
+Step 5: Initialize working environment on undercloud node
 ---------------------------------------------------------
 
 On the undercloud node:
@@ -878,7 +875,7 @@ This can be done like this::
 
    ./configure-federation initialize
 
-Step 5: Initialize working environment on controller-0
+Step 6: Initialize working environment on controller-0
 ------------------------------------------------------
 
 From the undercloud node:
@@ -898,7 +895,7 @@ This can be done like this::
 
    ./configure-federation initialize
 
-Step 6: Install mod_auth_mellon on each controller node
+Step 7: Install mod_auth_mellon on each controller node
 -------------------------------------------------------
 
 From the undercloud node:
@@ -917,7 +914,7 @@ This can be done like this::
 
    ./configure-federation install-mod-auth-mellon
 
-Step 7: Use the Keystone Version 3 API
+Step 8: Use the Keystone Version 3 API
 --------------------------------------
 
 In order to use the ``openstack`` command line client to work with the
@@ -958,7 +955,7 @@ From this point forward to work with the overcloud you will use the
   % source overcloudrc.v3
 
 
-Step 8: Add the RH-SSO FQDN to /etc/hosts on each controller
+Step 9: Add the RH-SSO FQDN to /etc/hosts on each controller
 ------------------------------------------------------------
 
 mellon will be running on each controller node. mellon will be
@@ -973,8 +970,8 @@ to the /etc/hosts file on *each* controller node::
   # HEAT_HOSTS_START - Do not edit manually within this section!
   $FED_RHSSO_IP_ADDR $FED_RHSSO_FQDN
 
-Step 9: Install & configure mellon on controller node
------------------------------------------------------
+Step 10: Install & configure mellon on controller node
+------------------------------------------------------
 
 The ``keycloak-httpd-client-install`` tool performs many of the steps
 needed to configure ``mod_auth_mellon`` and have it authenticate
@@ -1035,7 +1032,7 @@ You should see output similar to this::
   [Step 16] Completed Successfully
 
 
-Step 10: Adjust the mellon configuration
+Step 11: Adjust the mellon configuration
 ----------------------------------------
 
 Although ``keycloak-httpd-client-install`` does a good job of
@@ -1063,7 +1060,7 @@ example::
       MellonMergeEnvVars On ";"
   </Location>
 
-Step 11: Make an archive of the generated configuration files
+Step 12: Make an archive of the generated configuration files
 -------------------------------------------------------------
 
 Because the mellon configuration need to be replicated across all
@@ -1085,7 +1082,7 @@ You can create a compressed tar archive like this::
 
    ./configure-federation create-sp-archive
 
-Step 12: Retrieve the mellon configuration archive
+Step 13: Retrieve the mellon configuration archive
 --------------------------------------------------
 
 Back on the undercloud node we need to fetch the archive we just
@@ -1103,7 +1100,7 @@ the RH-SSO IdP). This can be done like this::
    ./configure-federation fetch-sp-archive
 
 
-Step 13: Prevent puppet from deleting unmanaged httpd files
+Step 14: Prevent puppet from deleting unmanaged httpd files
 -----------------------------------------------------------
 
 By default the Puppet Apache module will purge any files in the Apache
@@ -1148,7 +1145,7 @@ argument. For example::
    ./configure-federation puppet-override-apache
 
 
-Step 14: Configure Keystone for federation
+Step 15: Configure Keystone for federation
 ------------------------------------------
 
 We want to utilize domains in Keystone which requires some extra
@@ -1234,7 +1231,7 @@ argument. For example::
 
 
 
-Step 15: Deploy the mellon configuration archive
+Step 16: Deploy the mellon configuration archive
 ------------------------------------------------
 
 We'll use swift artifacts to install the mellon configuration files on
@@ -1248,7 +1245,7 @@ each controller node. This can be done like this::
    ./configure-federation deploy-mellon-configuration
 
 
-Step 16: Redeploy the overcloud
+Step 17: Redeploy the overcloud
 -------------------------------
 
 In prior steps we made changes to the puppet yaml configuration files
@@ -1267,7 +1264,7 @@ performed like this::
    configuration files on the overcloud controller nodes.
 
 
-Step 17: Use proxy persistence for Keystone
+Step 18: Use proxy persistence for Keystone
 -------------------------------------------
 
 With high availability any one of multiple backend servers might field
@@ -1319,7 +1316,7 @@ Note, the other parts of the server directive have been omitted for
 clarity.
 
 
-Step 18: Create federated resources
+Step 19: Create federated resources
 ------------------------------------
 
 Recall from the introduction that we are going to follow the example
@@ -1341,7 +1338,7 @@ having sourced the ``overcloudrc.v3`` file::
    ./configure-federation create-federated-resources
 
 
-Step 19: Create the identity provider in OpenStack
+Step 20: Create the identity provider in OpenStack
 --------------------------------------------------
 
 We must register our IdP with Keystone. This operation provides a
@@ -1372,7 +1369,7 @@ can be done like this::
 
 .. _mapping_explanation:
 
-Step 20: Create mapping file and upload into Keystone
+Step 21: Create mapping file and upload into Keystone
 -----------------------------------------------------
 
 Keystone performs a mapping from the SAML assertion it receives from
@@ -1454,7 +1451,7 @@ file can then be uploaded like this::
    ``openstack-create-mapping`` performs the upload of the file
 
 
-Step 21: Create a Keystone federation protocol
+Step 22: Create a Keystone federation protocol
 ----------------------------------------------
 
 Keystone binds an IdP using a specific protocol (e.g. saml2) to a
@@ -1472,7 +1469,7 @@ do the following::
    ./configure-federation openstack-create-protocol
 
 
-Step 22: Fully qualify the Keystone scheme, host, and port
+Step 23: Fully qualify the Keystone scheme, host, and port
 ----------------------------------------------------------
 
 On each controller node edit
@@ -1490,7 +1487,7 @@ enable the ``UseCanonicalName`` directive For example::
 being sure to substitute the correct values for the ``$FED\_`` variables
 with the values specific to your deployment.
 
-Step 23: Configure Horizon to use federation
+Step 24: Configure Horizon to use federation
 --------------------------------------------
 
 On each controller node edit
@@ -1511,7 +1508,7 @@ with the values specific to your deployment.
 
 
 
-Step 24: Set Horizon to use ``X-Forwarded-Proto`` HTTP header
+Step 25: Set Horizon to use ``X-Forwarded-Proto`` HTTP header
 -------------------------------------------------------------
 
 On each controller node edit
