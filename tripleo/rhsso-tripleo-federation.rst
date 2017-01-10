@@ -2,23 +2,23 @@ Introduction
 ============
 
 This document will provide you with instructions and guidance for
-setting up Openstack Keystone federation in a high availability TripleO
+setting up OpenStack Keystone federation in a high availability TripleO
 environment authenticating against a Red Hat Single Sign-On (RH-SSO)
 server.
 
 Operational Goals
 -----------------
 
-Upon completion authentication will be federated in OpenStack with
+Upon completion, authentication will be federated in OpenStack with
 the following characteristics:
 
 * Federation will be SAML based.
 
-* The IdP will be RH-SSO and will be external to the OpenStack TripleO
-  deployment.
+* The Identity Provider (IdP) will be RH-SSO and will be external to the
+  OpenStack TripleO deployment.
 
 * The RH-SSO IdP will utilize IPA as it's Federated User backing
-  store. In other words users and groups are managed in IPA and RH-SSO
+  store. In other words, users and groups are managed in IPA and RH-SSO
   will reference the user and group information in IPA.
 
 * Users in IPA with the right to access OpenStack will be added to the
@@ -214,7 +214,7 @@ instance.
    Some values used in this document are by necessity site
    specific. If site specific values were to be directly incorporated
    into this document it would be confusing and the source of errors
-   when trying to replicated the steps described here. To remedy this
+   when trying to replicate the steps described here. To remedy this
    any site specific values referenced in this document will be in the form
    of a variable. The variable name will start with a dollar-sign ($)
    and be all-caps with a prefix of "FED\_". For example the URL used
@@ -306,7 +306,7 @@ port that the server uses to identify itself. When
 specified in the ``ServerName`` directive to construct the canonical
 name for the server. This name is used in all self-referential URLs,
 and for the values of SERVER_NAME and SERVER_PORT in CGIs. If
-``UseCanonicalName`` is Off Apache will form self-referential URLs
+``UseCanonicalName`` is off Apache will form self-referential URLs
 using the hostname and port supplied by the client if any are
 supplied.
 
@@ -471,7 +471,7 @@ Create the ``openstack-users`` group in IPA.
 
 Add the test user to the ``openstack-users`` group like this::
 
-  ipa group-add-member --users jjdoe openstack-users
+  ipa group-add-member --users jdoe openstack-users
 
 Verify the ``openstack-users`` group exists and has the test user as a member::
 
@@ -565,8 +565,9 @@ see :ref:`mapping_explanation`
 
 RH-SSO calls the process of adding returned attributes "Protocol
 Mapping". Protocol mapping is a property of the RH-SSO client
-(e.g. the SP added to the RH-SSO realm). The process for adding SAML
-any given attribute follows a very similar pattern.
+(e.g. the service provider (SP) added to the RH-SSO realm). The
+process for adding SAML any given attribute follows a very similar
+pattern.
 
 In RH-SSO administration web console perform the following actions:
 
@@ -720,7 +721,7 @@ is an example only)::
 
 The first ``bind`` line has the ssl keyword and the IP address matches
 that of the ``OS_AUTH_URL`` located in the
-``overstackrc``file. Therefore we're confident that Keystone is
+``overstackrc`` file. Therefore we're confident that Keystone is
 publicly access at the IP address of 10.0.0.101 on port 13000. The
 second ``bind`` line is cluster internal, used by other OpenStack
 services running in the cluster (note it does not use TLS because it's
@@ -849,7 +850,7 @@ directory on controller-0, this can be done like this::
   % scp configure-federation fed_variables heat-admin@controller-0:/home/heat-admin
 
 .. Tip::
-   
+
    Use ``configure-federation`` script to perform the above.
 
    ./configure-federation copy-helper-to-controller
@@ -891,7 +892,8 @@ This can be done like this::
 
 
 .. Tip::
-   Use ``configure-federation`` script to perform the above.
+   Use ``configure-federation`` script to perform the above. Execute from
+   the controller-0 node.
 
    ./configure-federation initialize
 
@@ -1131,6 +1133,10 @@ Create this file ``fed_deployment/puppet_override_apache.yaml`` with this conten
     ControllerExtraConfig:
       apache::purge_configs: false
 
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation puppet-override-apache
 
 Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
@@ -1138,11 +1144,6 @@ argument. For example::
 
   -e /home/stack/fed_deployment/puppet_override_apache.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
-
-.. Tip::
-   Use ``configure-federation`` script to perform the above.
-
-   ./configure-federation puppet-override-apache
 
 
 Step 15: Configure Keystone for federation
@@ -1216,19 +1217,17 @@ Create this file ``fed_deployment/puppet_override_keystone.yaml`` with this cont
         federation/remote_id_attribute:
           value: MELLON_IDP
 
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation puppet-override-keystone
+
 Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
 
   -e /home/stack/fed_deployment/puppet_override_keystone.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
-
-.. Tip::
-   Use ``configure-federation`` script to perform the above.
-
-   ./configure-federation puppet-override-keystone
-
-
 
 
 Step 16: Deploy the mellon configuration archive
@@ -1237,6 +1236,7 @@ Step 16: Deploy the mellon configuration archive
 We'll use swift artifacts to install the mellon configuration files on
 each controller node. This can be done like this::
 
+  % source ~/stackrc
   % upload-swift-artifacts -f fed_deployment/rhsso_config.tar.gz
 
 .. Tip::
@@ -1257,15 +1257,15 @@ performed like this::
 
 .. Warning::
    In subsequent steps other configuration changes will be made on the
-   overcloud controller nodes. Re-runniing puppet via the
+   overcloud controller nodes. Re-running puppet via the
    ``overcloud_deploy.sh`` script *may* overwrite some of these
    changes. You should avoid applying the puppet configuration from
    this point forward to avoid losing any manual edits to
    configuration files on the overcloud controller nodes.
 
 
-Step 18: Use proxy persistence for Keystone
--------------------------------------------
+Step 18: Use proxy persistence for Keystone on each controller
+--------------------------------------------------------------
 
 With high availability any one of multiple backend servers might field
 a request. Because of the number of redirections utilized in SAML and
@@ -1329,8 +1329,8 @@ having sourced the ``overcloudrc.v3`` file::
   % openstack domain create federated_domain
   % openstack project create  --domain federated_domain federated_project
   % openstack group create federated_users
-  % openstack role add --group federated_users --domain federated_domain Member
-  % openstack role add --group federated_users --project federated_project Member
+  % openstack role add --group federated_users --domain federated_domain _member_
+  % openstack role add --group federated_users --project federated_project _member_
 
 .. Tip::
    Use ``configure-federation`` script to perform the above.
@@ -1495,7 +1495,7 @@ On each controller node edit
 following configuration values are set::
 
   OPENSTACK_KEYSTONE_URL = "https://$FED_KEYSTONE_HOST:$FED_KEYSTONE_HTTPS_PORT/v3"
-  OPENSTACK_KEYSTONE_DEFAULT_ROLE = "Member"
+  OPENSTACK_KEYSTONE_DEFAULT_ROLE = "_member_"
   WEBSSO_ENABLED = True
   WEBSSO_INITIAL_CHOICE = "saml2"
   WEBSSO_CHOICES = (
