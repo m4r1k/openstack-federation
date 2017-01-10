@@ -96,20 +96,29 @@ Prerequisites
 How to login to the undercloud and overcloud nodes
 --------------------------------------------------
 
-1. ssh as root into the node hosting the deployment, e.. ``ssh root@xxx``
+1. ssh as root into the node hosting the deployment, for example::
 
-2. ssh into the undercloud node via ``ssh undercloud-0``
+     ssh root@xxx
 
-3. Become the ``stack`` user via ``su - stack``
+2. ssh into the undercloud node via::
+
+     ssh undercloud-0
+
+3. Become the ``stack`` user via::
+
+     su - stack
 
 4. Source the overcloud configuration which sets up OpenStack
-   environment variables via ``source overcloudrc``
+   environment variables via::
+
+     source overcloudrc
 
    .. Note::
       Currently TripleO sets up Keystone to use the Keystone v2 API
       but we will be using the Keystone v3 API. Later on in the guide
       we will create a ``overcloudrc.v3`` file. From that point on you
       should use the v3 version of the overcloudrc file.
+      See :ref:`v3_rc_explanation`
 
 At this point you can issue commands via the ``openstack`` command
 line tool which will operate on the overcloud (even though you're
@@ -217,12 +226,12 @@ instance.
    when trying to replicate the steps described here. To remedy this
    any site specific values referenced in this document will be in the form
    of a variable. The variable name will start with a dollar-sign ($)
-   and be all-caps with a prefix of "FED\_". For example the URL used
+   and be all-caps with a prefix of ``FED_``. For example the URL used
    to access the RH-SSO server would be:
 
    ``$FED_RHSSO_URL``
 
-   Site specific values can always be identified by searching for "$FED\_"
+   Site specific values can always be identified by searching for ``$FED_``
 
    Site specific values utilized by the ``configure-federation`` script
    are gathered into the file ``fed_variables``. You will need to edit
@@ -289,26 +298,27 @@ occur. The backend server need to know:
 Apache supports virtual name hosting. This allows a single server to
 host multiple domains. For example a server running on example.com
 might service requests for both bigcorp.com and littleguy.com. The
-latter 2 names are called virtual host names. Virtual hosts in Apache
+latter 2 names are virtual host names. Virtual hosts in Apache
 are configured inside a server configuration block, for example::
 
   <VirtualHost>
     ServerName bigcorp.com
   </VirtualHost>
 
-When Apache receives a request it deduces the host from ``HOST`` HTTP
-header. It then tries to match the host to the ``ServerName`` in it's
-collection of virtual hosts.
+When Apache receives a request it deduces the host from the ``HOST``
+HTTP header. It then tries to match the host to the ``ServerName`` in
+it's collection of virtual hosts.
 
 The ``ServerName`` directive sets the request scheme, hostname and
-port that the server uses to identify itself. When
-``UseCanonicalName`` is enabled Apache will use the hostname and port
-specified in the ``ServerName`` directive to construct the canonical
-name for the server. This name is used in all self-referential URLs,
-and for the values of SERVER_NAME and SERVER_PORT in CGIs. If
-``UseCanonicalName`` is off Apache will form self-referential URLs
-using the hostname and port supplied by the client if any are
-supplied.
+port that the server uses to identify itself. The behavior of the
+``ServerName`` directive is modified by the ``UseCanonicalName``
+directive. When ``UseCanonicalName`` is enabled Apache will use the
+hostname and port specified in the ``ServerName`` directive to
+construct the canonical name for the server. This name is used in all
+self-referential URLs, and for the values of SERVER_NAME and
+SERVER_PORT in CGIs. If ``UseCanonicalName`` is Off Apache will form
+self-referential URLs using the hostname and port supplied by the
+client, if any are supplied.
 
 If no port is specified in the ``ServerName``, then the server will
 use the port from the incoming request. For optimal reliability and
@@ -320,10 +330,11 @@ reverse lookup on an IP address present on the system. Obviously this
 will produce the wrong host information when the server is behind a
 proxy therefore use of the ``ServerName`` directive is essential.
 
-The Apache doc
-https://httpd.apache.org/docs/current/mod/core.html#servername is very
-clear concerning the need to fully specify the scheme, host, and port
-in the ``Server`` name directive when the server is behind a proxy, it states:
+The Apache `ServerName
+<https://httpd.apache.org/docs/current/mod/core.html#servername>`_ doc
+is very clear concerning the need to fully specify the scheme, host,
+and port in the ``Server`` name directive when the server is behind a
+proxy, it states:
 
     Sometimes, the server runs behind a device that processes SSL,
     such as a reverse proxy, load balancer or SSL offload
@@ -338,7 +349,8 @@ processing a request to recognize the request was forwarded and
 what the original values were *before* being forwarded.
 
 The TripleO HAProxy configuration sets the ``X-Forwarded-Proto`` HTTP
-header based on whether the front connection utilized SSL/TLS or not::
+header based on whether the front connection utilized SSL/TLS or not
+via this configuration::
 
     http-request set-header X-Forwarded-Proto https if { ssl_fc }
     http-request set-header X-Forwarded-Proto http if !{ ssl_fc }
@@ -349,16 +361,21 @@ situation where HAProxy terminates SSL prior to the backend server
 processing the request the fact the ``X-Forwarded-Proto`` HTTP header
 is set to https is **irrelevant** because Apache does not utilize the
 header when an extension module such as mellon asks for the protocol
-scheme of the request.
+scheme of the request. This is why it is **essential** to have the
+``ServerName`` directive include the scheme:://host:port and
+``UseCanonicalName`` is enabled otherwise Apache
+extension modules such as ``mod_auth_mellon`` will not function
+properly behind a proxy.
 
 But what about web apps hosted by Apache behind a proxy? It turns out
 it's the web app (or rather the web app framework) responsibility to
-process the header. Apps handle the protocol scheme of a forwarded
-request differently than Apache extension modules do.
+process the forwarded header. Thus apps handle the protocol scheme of
+a forwarded request differently than Apache extension modules do.
 
-Since Horizon is a Django web app it's Django responsibility. This
-issue aries with the ``origin`` query parameter used by Horizon during
-authentication. Horizon adds ``origin`` query parameter to the
+Since Horizon is a Django web app it's Django responsibility to
+process the ``X-Forwarded-Proto`` header. This issue aries with the
+``origin`` query parameter used by Horizon during
+authentication. Horizon adds a ``origin`` query parameter to the
 Keystone URL it invokes to perform authentication. The ``origin``
 parameter is used by Horizon to redirect back to original resource.
 
@@ -369,11 +386,12 @@ with https enabled. This occurs because Horizon calls function
 entirely up to the Django to identify the scheme because
 ``build_absolute_url()`` is ultimately implemented by Django. You can
 force Django to process the ``X-Forwarded-Proto`` via a special
-configuration directive. This is documented here:
+configuration directive. This is documented in the Django
+`secure-proxy-ssl-header
+<https://docs.djangoproject.com/en/1.10/ref/settings/#secure-proxy-ssl-header>`_
+documentation.
 
-https://docs.djangoproject.com/en/1.10/ref/settings/#secure-proxy-ssl-header
-
-This can be enabled in the /etc/openstack-dashboard/local_settings
+This can be enabled in the ``/etc/openstack-dashboard/local_settings``
 file by uncommenting this line::
 
   #SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -381,11 +399,12 @@ file by uncommenting this line::
 Note, Django prefixes the header with "HTTP\_" and converts hyphens to
 underscores.
 
-After uncommenting this the Origin parameter correctly used the https scheme.
+After uncommenting this the Origin parameter will correctly use the
+https scheme.
 
-Even when the ``ServerName`` directive includes the https scheme the
-Django call ``build_absolute_url()`` will not use the https
-scheme. Thus for Django you must use the ``SECURE_PROXY_SSL_HEADER``
+Note that even when the ``ServerName`` directive includes the https
+scheme the Django call ``build_absolute_url()`` will not use the https
+scheme. Thus for Django you *must* use the ``SECURE_PROXY_SSL_HEADER``
 override, specifying the scheme in ``ServerName`` directive will not
 work.
 
@@ -413,7 +432,7 @@ privileges to obtain the required information.
 
 To this end we will need to set up a service account in IPA dedicated
 to RH-SSO. Unfortunately IPA does not provide a command to perform
-this instead IPA's LDAP server will need to be modified directly by
+this, instead IPA's LDAP server will need to be modified directly by
 use of the ``ldapmodify`` command.
 
 This can be performed like this::
@@ -490,7 +509,7 @@ OpenStack TripleO deployment. The RH-SSO URL will be identified
 by the ``$FED_RHSSO_URL`` variable.
 
 RH-SSO supports multi-tenancy. To provide separation between tenants
-of RH-SSO realms are used. Thus in RH-SSO operations always occur in
+of RH-SSO realms are used, thus in RH-SSO operations always occur in
 the context of a realm. This document will use the site specific
 variable ``$FED_RHSSO_REALM`` to identity the RH-SSO realm being used.
 
@@ -503,7 +522,7 @@ variable ``$FED_RHSSO_REALM`` to identity the RH-SSO realm being used.
 Once the RH-SSO realm is available it will be necessary to configure
 that realm for User Federation against IPA.
 
-In RH-SSO administration web console perform the following actions:
+In the RH-SSO administration web console perform the following actions:
 
 1. Select $FED_RHSSO_REALM from drop down list in upper left corner
 
@@ -513,7 +532,7 @@ In RH-SSO administration web console perform the following actions:
    corner of the ``User Federation`` panel select ``ldap``.
 
 4. Fill in the following fields with these values, be sure to
-   substitute any ``$FED\_`` site specific variable.
+   substitute any ``$FED_`` site specific variable.
 
    +-------------------------+--------------------------------------------------+
    | Property                | Value                                            |
@@ -560,7 +579,7 @@ RH-SSO to return specific attributes in the assertion that we depend
 upon. When Keystone receives the SAML assertion it will map those
 attributes into metadata about the user which Keystone can
 understand. The process of mapping IdP attributes into Keystone data
-is called Federated Mapping and will be elsewhere in this document,
+is called Federated Mapping and will be discussed elsewhere in this document,
 see :ref:`mapping_explanation`
 
 RH-SSO calls the process of adding returned attributes "Protocol
@@ -575,7 +594,9 @@ In RH-SSO administration web console perform the following actions:
 
 2. Select ``Clients`` from the left side ``Configure`` panel
 
-3. Select the SP client setup by ``keycloak-httpd-client-install``.
+3. Select the SP client that was setup by
+   ``keycloak-httpd-client-install``. It will be identified by it's
+   SAML ``EntityId``.
 
 4. Select the ``Mappers`` tab from the horizontal list of tabs appearing
    at the top of the client panel.
@@ -630,7 +651,9 @@ The following nodes will need an FQDN:
 
   * host running the OpenStack Horizon Dashboard
 
-  * host running the OpenStack Keystone service (``$FED_KEYSTONE_HOST``)
+  * host running the OpenStack Keystone service
+    (``$FED_KEYSTONE_HOST``) [#service_ip_not_host_ip]_
+    
 
   * host running RH-SSO
 
@@ -646,7 +669,7 @@ controller-1 etc.)
 
 What is going on here? You may be used to running a service on a
 particular node. If you're not familiar with high availability
-clusters IP addresses assigned to a cluster as opposed to a node might
+clusters IP addresses are assigned to a cluster as opposed to a node might
 seem strange. Pacemaker and HAProxy work in conjunction to provide the
 illusion there is one IP address and that IP address is entirely
 distinct from the individual IP address of any given node in the
@@ -722,7 +745,7 @@ is an example only)::
 The first ``bind`` line has the ssl keyword and the IP address matches
 that of the ``OS_AUTH_URL`` located in the
 ``overstackrc`` file. Therefore we're confident that Keystone is
-publicly access at the IP address of 10.0.0.101 on port 13000. The
+publicly accessed at the IP address of 10.0.0.101 on port 13000. The
 second ``bind`` line is cluster internal, used by other OpenStack
 services running in the cluster (note it does not use TLS because it's
 not public).
@@ -735,21 +758,22 @@ The ``X-Forwarded-Proto`` lines::
     http-request set-header X-Forwarded-Proto https if { ssl_fc }
     http-request set-header X-Forwarded-Proto http if !{ ssl_fc }
 
-deserve attention and will be covered in more detail elsewhere. They
-guarantee that the HTTP header ``X-Forwarded-Proto`` will be set and
-seen by the backend server. The backend server in many cases needs to
-know if the client was using ``HTTPS``. But HAProxy terminates TLS and
-the backend server will see the connection as non-TLS. The
-``X-Forwarded-Proto`` HTTP header is a mechanism which allows the
-backend server identify what protocol the client was actually using
-instead of what protocol the request arrived on. It is *essential*
-that a client not be able to send a ``X-Forwarded-Proto`` HTTP header
-because that would allow the client to maliciously spoof that the
-protocol was ``HTTPS``. The ``X-Forwarded-Proto`` HTTP header can
-either be deleted by the proxy when it received from the client or the
-proxy can forcefully set it thus preventing any malicious use by the
-client. This is what occurs here, ``X-Forwarded-Proto`` will always be
-set to one of ``https`` or ``http``.
+deserve attention and will be covered in more detail in
+:ref:`server_name_explanation`. They guarantee that the HTTP header
+``X-Forwarded-Proto`` will be set and seen by the backend server. The
+backend server in many cases needs to know if the client was using
+``HTTPS``. But HAProxy terminates TLS and the backend server will see
+the connection as non-TLS. The ``X-Forwarded-Proto`` HTTP header is a
+mechanism which allows the backend server identify what protocol the
+client was actually using instead of what protocol the request arrived
+on. It is *essential* that a client not be able to send a
+``X-Forwarded-Proto`` HTTP header because that would allow the client
+to maliciously spoof that the protocol was ``HTTPS``. The
+``X-Forwarded-Proto`` HTTP header can either be deleted by the proxy
+when it received from the client or the proxy can forcefully set it
+thus preventing any malicious use by the client. This is what occurs
+here, ``X-Forwarded-Proto`` will always be set to one of ``https`` or
+``http``.
 
 The X-Forwarded-For HTTP header is used to track the client so the
 backend server can identify who the requesting client was instead of
@@ -762,7 +786,8 @@ HTTP header to be inserted into the request::
 See :ref:`server_name_explanation` for more information on forwarded
 proto, redirects, ServerName, etc.
 
-This line will assure only HTTPS is used on the public IP address::
+The following line will assure only HTTPS is used on the public IP
+address::
 
     redirect scheme https code 301 if { hdr(host) -i 10.0.0.101 } !{ ssl_fc }
 
@@ -903,7 +928,7 @@ Step 7: Install mod_auth_mellon on each controller node
 From the undercloud node:
 
 1. ssh into the controller-n node as the ``heat-admin`` user
-2. install the mod_auth_mellon RPM
+2. install the ``mod_auth_mellon`` RPM
 
 This can be done like this::
 
@@ -916,6 +941,8 @@ This can be done like this::
 
    ./configure-federation install-mod-auth-mellon
 
+.. _v3_rc_explanation:
+
 Step 8: Use the Keystone Version 3 API
 --------------------------------------
 
@@ -925,10 +952,10 @@ access. Normally this is done by *sourcing* an *rc* file in your shell
 that sets environment variables. TripleO will have created an
 ``overcloudrc`` file for this purpose in the home directory of the
 stack user in the undercloud-0 node. Unfortunately the ``overcloudrc``
-file is setup to us the v2 version of the Keystone API. But federation
-requires the use of the ``v3`` Keystone. Therefore we need to create a
-new *rc* file targeting the ``v3`` Keystone API. This can be done like
-this::
+file is setup to use the v2 version of the Keystone API. But
+federation requires the use of the ``v3`` Keystone API. Therefore we
+need to create a new *rc* file targeting the ``v3`` Keystone API. This
+can be done like this::
 
   source overcloudrc
   NEW_OS_AUTH_URL=`echo $OS_AUTH_URL | sed 's!v2.0!v3!'`
@@ -982,7 +1009,7 @@ should be run on the node where mellon will run. In our case this
 means mellon will be running on the overcloud controllers protecting
 Keystone.
 
-Recall this is high availability deployment and as such there will be
+Recall this is a high availability deployment and as such there will be
 multiple overcloud controller nodes each running identical
 copies. Therefore the mellon setup will need to be replicated across
 each controller node. The way we will tackle this is to install and
@@ -1038,7 +1065,7 @@ Step 11: Adjust the mellon configuration
 ----------------------------------------
 
 Although ``keycloak-httpd-client-install`` does a good job of
-configuring mellon it cannot know all the need of a particular
+configuring mellon it cannot know all the needs of a particular
 deployment.
 
 We will be utilizing a list of groups during the IdP assertion to
@@ -1090,7 +1117,7 @@ Step 13: Retrieve the mellon configuration archive
 Back on the undercloud node we need to fetch the archive we just
 created. We also need to unarchive the files because in subsequent
 steps we will need access to some of the data (e.g. the entityID of
-the RH-SSO IdP). This can be done like this::
+the RH-SSO IdP). This can be done like this on the undercloud-0 node::
 
   % scp heat-admin@controller-0:/home/heat-admin/fed_deployment/rhsso_config.tar.gz \
   ~/fed_deployment
@@ -1106,14 +1133,14 @@ Step 14: Prevent puppet from deleting unmanaged httpd files
 -----------------------------------------------------------
 
 By default the Puppet Apache module will purge any files in the Apache
-configuration directories it is not managing. This is sensible
+configuration directories it is not managing. This is a sensible
 precaution, it prevents Apache from operating in any fashion other
 then the configuration enforced by Puppet. However this runs afoul of
 our manual configuration of mellon in the httpd configuration
 directories. When the Apache puppet ``apache::purge_configs`` flag is
 enabled (which it is by default) puppet will delete files belonging to
-the mod_auth_mellon RPM when the mod_auth_mellon RPM is installed. It
-will also delete the configuration files generated by
+the ``mod_auth_mellon`` RPM when the ``mod_auth_mellon`` RPM is
+installed. It will also delete the configuration files generated by
 ``keycloak-httpd-client-install`` when it is run. Until such time as
 the mellon files are under control of puppet we will have to disable
 ``apache::purge_configs`` flag.
@@ -1172,7 +1199,7 @@ suggested values:
 auth:methods
   A list of allowed authentication methods. By default the list is:
   ``['external', 'password', 'token', 'oauth1']``. We need to assure
-  SAML is included which is not by default. SAML is enabled via the
+  SAML is included which it is not by default. SAML is enabled via the
   ``mapped`` method. Thus this value should be
   ``external,password,token,oauth1,mapped``.
 
@@ -1196,7 +1223,7 @@ federation:sso_callback_template
 
 federation:remote_id_attribute
   Value used to obtain the entity ID of the Identity Provider from the
-  environment. For mod_auth_mellon we will use ``MELLON_IDP``. Note,
+  environment. For ``mod_auth_mellon`` we will use ``MELLON_IDP``. Note,
   this is set in the mellon configuration file via the ``MellonIdP
   IDP`` directive.
 
@@ -1285,7 +1312,7 @@ What is the difference between Persistence and Affinity? Affinity is
 when information from a layer below the application layer is used to
 pin a client request to a single server. Persistence is when
 Application layer information binds a client to a single server sticky
-session. The main advantage of the persistence over affinity is
+session. The main advantage of persistence over affinity is
 it is much more accurate.
 
 Persistence is implemented though the use of cookies. The HAProxy
@@ -1348,7 +1375,7 @@ IdP. This appears in the IdP metadata which was obtained when
 ``keycloak-httpd-client-install`` was run. The IdP metadata is stored
 in the
 ``/etc/httpd/saml2/v3_keycloak_$FED_RHSSO_REALM_idp_metadata.xml``
-file. Recall from an earlier step we fetched the an archive of the
+file. Recall from an earlier step we fetched the archive of the
 mellon configuration files and then unarchived it in our
 ``fed_deployment`` work area. Thus you can find the IdP metadata in
 ``fed_deployment/etc/httpd/saml2/v3_keycloak_$FED_RHSSO_REALM_idp_metadata.xml``. In
@@ -1375,8 +1402,10 @@ Step 21: Create mapping file and upload into Keystone
 Keystone performs a mapping from the SAML assertion it receives from
 the IdP to a format Keystone can understand. The mapping is performed
 by Keystone's mapping engine and is based on a set of mapping rules
-that are bound to the IdP. These are the mapping rules we will be
-using for our example as explained in the introduction::
+that are bound to the IdP.
+
+These are the mapping rules we will be using for our example as
+explained in the introduction::
 
   [
       {
@@ -1408,8 +1437,8 @@ using for our example as explained in the introduction::
 This mapping file contains only one rule. Rules are divided into 2
 parts ``local`` and ``remote``. The way the mapping engine works is it
 iterates over the list of rules until one matches and then executes
-it. A rule matches if *all* the conditions in the ``remote`` part of
-the rule match. In our example the ``remote`` conditions specify:
+it. A rule matches only if *all* the conditions in the ``remote`` part
+of the rule match. In our example the ``remote`` conditions specify:
 
 1. The assertion must contain a value called ``MELLON_NAME_ID``
 
@@ -1432,11 +1461,13 @@ OpenStack with the privileges bound to the ``federated_users`` group
 in Keystone.
 
 To create the mapping in Keystone you must create a file containing
-the mapping rules and then upload it into Keystone giving a name so it
-can be referenced. We will create the mapping file in our fed_deployment
-directory, e.g. ``fed_deployment/mapping_rhsso_saml2.json`` and assign the
-mapping rules the name ``$FED_OPENSTACK_MAPPING_NAME``. The mapping
-file can then be uploaded like this::
+the mapping rules and then upload it into Keystone giving it a name so
+it can be referenced. We will create the mapping file in our
+fed_deployment directory,
+e.g. ``fed_deployment/mapping_${FED_OPENSTACK_IDP_NAME}_saml2.json``
+and assign the mapping rules the name
+``$FED_OPENSTACK_MAPPING_NAME``. The mapping file can then be uploaded
+like this::
 
   openstack mapping create --rules fed_deployment/mapping_rhsso_saml2.json $FED_OPENSTACK_MAPPING_NAME
 
@@ -1484,7 +1515,7 @@ enable the ``UseCanonicalName`` directive For example::
     ...
   </VirtualHost>
 
-being sure to substitute the correct values for the ``$FED\_`` variables
+being sure to substitute the correct values for the ``$FED_`` variables
 with the values specific to your deployment.
 
 Step 24: Configure Horizon to use federation
@@ -1503,7 +1534,7 @@ following configuration values are set::
       ("credentials", _("Keystone Credentials")),
   )
 
-being sure to substitute the correct values for the ``$FED\_`` variables
+being sure to substitute the correct values for the ``$FED_`` variables
 with the values specific to your deployment.
 
 
@@ -1648,7 +1679,7 @@ and displaying the SAML messages exchanged between the SP and the IdP.
 3. Initiate SSO login from the Firefox browser.
 
 4. In the ``SAMLTracer`` window find the first ``SAML`` message and
-   click on it. Use the ``SAML `` tab in the window to see the decoded
+   click on it. Use the ``SAML`` tab in the window to see the decoded
    SAML message (note, the tool is not capable of decrypting encrypted
    content in the body of the message, if you need to see encrypted
    content you must disable encryption in the metadata). The first
@@ -1674,3 +1705,12 @@ RH-SSO
 TripleO
     OpenStack on OpenStack. An OpenStack installer,
     see https://wiki.openstack.org/wiki/TripleO
+
+Footnotes
+=========
+
+.. [#service_ip_not_host_ip] In a high availablity environment more
+                             than one host will run a service
+                             therefore the IP address is not a host
+                             address but rather the IP address bound
+                             to the service.
