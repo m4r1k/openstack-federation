@@ -15,6 +15,7 @@ mellon_endpoint="mellon"
 mellon_app_name="v3"
 
 overcloud_deploy_script="overcloud_deploy.sh"
+overcloudrc_file="./overcloudrc"
 
 function cmd_template {
     local status=0
@@ -67,6 +68,9 @@ function show_variables {
     echo "stage_dir: $stage_dir"
     echo "config_tar_filename: $config_tar_filename"
     echo "config_tar_pathname: $config_tar_pathname"
+    echo "overcloud_deploy_script: $overcloud_deploy_script"
+    echo "overcloudrc_file: $overcloudrc_file"
+
     echo "puppet_override_apache_pathname: $puppet_override_apache_pathname"
     echo "puppet_override_keystone_pathname: $puppet_override_keystone_pathname"
 
@@ -328,11 +332,16 @@ function append_deploy_script {
     local status=0
     local deploy_script=$1
     local extra_line=$2
+    local count
 
-    grep -q -e "$extra_line" $deploy_script
-    if [ $? -eq 0 ]; then
+    count=$(grep -c -e "$extra_line" $deploy_script)
+    if [ $count -eq 1 ]; then
         echo -e "SKIP appending:\n$extra_line"
         echo "already present in $deploy_script"
+        return $status
+    elif [ $count -gt 1 ]; then
+        status=1
+        (>&2 echo -e "ERROR multiple copies of line in  ${deploy_script}\nstatus = $status\nline=$extra_line")
         return $status
     fi
 
@@ -344,13 +353,33 @@ function append_deploy_script {
         return $status
     fi
 
-    # add line before the last line which contains the
-    # log redirect (e.g. &>)
-    sed -i "s#^.*&>.*\$#${extra_line} \\\\\n\\0#" $deploy_script
-    status=$?
-    if [ $status -ne 0 ]; then
-        (>&2 echo -e "ERROR failed to append ${deploy_script}\nstatus = $status\nextra_line=$extra_line")
+    # insert line after last -e line already in script
+    #
+    # This is not easy with sed, we'll use tac and awk instead.  Here
+    # is how this works: The logic is easier if you insert before the
+    # first line rather than trying to find the last line and insert
+    # after it. We use tac to reverse the lines in the file. Then the
+    # awk script looks for the candidate line. If found it outputs the
+    # line we're adding, sets a flag (p) to indicate it's already been
+    # printed. The "; 1" pattern always output the input line. Then we
+    # run the output through tac again to set things back in the
+    # original order.
+
+    local tmp_file=$(mktemp)
+
+    tac $deploy_script | awk "!p && /^-e/{print \"${extra_line} \\\\\"; p=1}; 1" | tac > $tmp_file
+
+    count=$(grep -c -e "${extra_line}" $tmp_file)
+    if [ $count -ne 1 ]; then
+        status=1
     fi
+    if [ $status -ne 0 ]; then
+        rm $tmp_file
+        (>&2 echo -e "ERROR failed to append ${deploy_script}\nstatus = $status\nline=$extra_line")
+    else
+        mv $tmp_file $deploy_script
+    fi
+
 
     return $status
 }
@@ -516,16 +545,10 @@ EOF
 
 function create_v3_rcfile {
     local status=0
+    local input_file=${1:-$overcloudrc_file}
+    local output_file="${input_file}.v3"
 
-    if [ -z $1 ]
-    then
-        echo "Usage $0 <keystone.rc>"
-        exit 1
-    fi
-
-    local pathname="${1}.v3"
-
-    source $1
+    source $input_file
     #clear the old environment
     NEW_OS_AUTH_URL=`echo $OS_AUTH_URL | sed 's!v2.0!v3!'`
 
@@ -541,17 +564,17 @@ export OS_IDENTITY_API_VERSION=3
 EOF
 
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
-        echo "writeing pathname = $pathname with contents:"
+        echo "writeing output_file = $output_file with contents:"
         echo -e "$contents"
     fi
     if [ $dry_run -ne 0 ]; then
         return $status
     fi
 
-    echo -e "$contents" > $pathname
+    echo -e "$contents" > $output_file
     status=$?
     if [ $status -ne 0 ]; then
-        (>&2 echo -e "ERROR failed to write ${pathname}\nstatus = $status")
+        (>&2 echo -e "ERROR failed to write ${output_file}\nstatus = $status")
     fi
 
     return $status

@@ -1160,11 +1160,6 @@ Create this file ``fed_deployment/puppet_override_apache.yaml`` with this conten
     ControllerExtraConfig:
       apache::purge_configs: false
 
-.. Tip::
-   Use ``configure-federation`` script to perform the above.
-
-   ./configure-federation puppet-override-apache
-
 Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
@@ -1172,6 +1167,10 @@ argument. For example::
   -e /home/stack/fed_deployment/puppet_override_apache.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
 
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation puppet-override-apache
 
 Step 15: Configure Keystone for federation
 ------------------------------------------
@@ -1244,11 +1243,6 @@ Create this file ``fed_deployment/puppet_override_keystone.yaml`` with this cont
         federation/remote_id_attribute:
           value: MELLON_IDP
 
-.. Tip::
-   Use ``configure-federation`` script to perform the above.
-
-   ./configure-federation puppet-override-keystone
-
 Then add the file just created near the end of the
 ``overcloud_deploy.sh`` script. It should be the last ``-e``
 argument. For example::
@@ -1256,6 +1250,10 @@ argument. For example::
   -e /home/stack/fed_deployment/puppet_override_keystone.yaml \
   --log-file overcloud_deployment_14.log &> overcloud_install.log
 
+.. Tip::
+   Use ``configure-federation`` script to perform the above.
+
+   ./configure-federation puppet-override-keystone
 
 Step 16: Deploy the mellon configuration archive
 ------------------------------------------------
