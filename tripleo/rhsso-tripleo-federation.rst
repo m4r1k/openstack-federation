@@ -1353,6 +1353,7 @@ having sourced the ``overcloudrc.v3`` file::
 
   % openstack domain create federated_domain
   % openstack project create  --domain federated_domain federated_project
+  % openstack role create Member
   % openstack group create federated_users
   % openstack role add --group federated_users --domain federated_domain _member_
   % openstack role add --group federated_users --project federated_project _member_
@@ -1414,7 +1415,7 @@ explained in the introduction::
                   },
                   "group": {
                       "domain": {
-                          "name": "Default"
+                          "name": "federated_domain"
                       },
                       "name": "federated_users"
                   }
