@@ -465,7 +465,7 @@ function create_federated_resources {
     declare -a cmds=(
     "openstack domain create federated_domain"
     "openstack project create  --domain federated_domain federated_project"
-    "openstack group create federated_users"
+    "openstack group create federated_users --domain federated_domain"
     "openstack role create Member"
     "openstack role add --group federated_users --domain federated_domain Member"
     "openstack role add --group federated_users --project federated_project Member"
