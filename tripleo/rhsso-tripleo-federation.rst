@@ -1031,9 +1031,9 @@ This can be done like this::
    --keycloak-admin-password  $FED_RHSSO_ADMIN_PASSWORD \
    --app-name v3 \
    --keycloak-realm $FED_RHSSO_REALM \
-   -l "/v3/auth/OS-FEDERATION/websso/saml2" \
-   -l "/v3/auth/OS-FEDERATION/identity_providers/rhsso/protocols/saml2/websso" \
-   -l "/v3/OS-FEDERATION/identity_providers/rhsso/protocols/saml2/auth"
+   -l "/v3/auth/OS-FEDERATION/websso/mapped" \
+   -l "/v3/auth/OS-FEDERATION/identity_providers/rhsso/protocols/mapped/websso" \
+   -l "/v3/OS-FEDERATION/identity_providers/rhsso/protocols/mapped/auth"
 
 
 .. Tip::
@@ -1484,14 +1484,14 @@ like this::
 Step 22: Create a Keystone federation protocol
 ----------------------------------------------
 
-Keystone binds an IdP using a specific protocol (e.g. saml2) to a
+Keystone binds an IdP using a specific protocol (e.g. mapped) to a
 mapping via a Keystone protocol definition. To establish this binding
 do the following::
 
   openstack federation protocol create \
   --identity-provider $FED_OPENSTACK_IDP_NAME \
   --mapping $FED_OPENSTACK_MAPPING_NAME \
-  saml2"
+  mapped"
 
 .. Tip::
    Use ``configure-federation`` script to perform the above.
@@ -1650,7 +1650,7 @@ variables are you can do the following:
    setting it to run the ``test`` script by temporarily modifying
    the ``WSGIScriptAlias`` directive like this::
 
-     WSGIScriptAlias "/v3/auth/OS-FEDERATION/websso/saml2" "/var/www/cgi-bin/keystone/test"
+     WSGIScriptAlias "/v3/auth/OS-FEDERATION/websso/mapped" "/var/www/cgi-bin/keystone/test"
 
 
 3. Restart httpd like this::
