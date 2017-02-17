@@ -1527,7 +1527,7 @@ following configuration values are set::
   OPENSTACK_KEYSTONE_URL = "https://$FED_KEYSTONE_HOST:$FED_KEYSTONE_HTTPS_PORT/v3"
   OPENSTACK_KEYSTONE_DEFAULT_ROLE = "_member_"
   WEBSSO_ENABLED = True
-  WEBSSO_INITIAL_CHOICE = "saml2"
+  WEBSSO_INITIAL_CHOICE = "mapped"
   WEBSSO_CHOICES = (
       ("saml2", _("RH-SSO")),
       ("credentials", _("Keystone Credentials")),
