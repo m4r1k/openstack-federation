@@ -933,7 +933,7 @@ From the undercloud node:
 This can be done like this::
 
   % ssh heat-admin@controller-n # replace n with controller number
-  % sudo yum -y install keycloak-httpd-client-install
+  % sudo yum -y install mod_auth_mellon
 
 
 .. Tip::

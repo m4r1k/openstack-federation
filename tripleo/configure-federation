@@ -150,7 +150,7 @@ function copy_helper_to_controller {
 
 function install_mod_auth_mellon {
     local status=0
-    local cmd="sudo yum -y install keycloak-httpd-client-install"
+    local cmd="sudo yum -y install mod_auth_mellon"
 
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
         echo $cmd
