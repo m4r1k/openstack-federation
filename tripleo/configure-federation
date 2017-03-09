@@ -199,7 +199,7 @@ EOF
         return $status
     fi
 
-    $cmd <<< "$contents"
+    sh <<< "$cmd <<< \"$contents\""
     status=$?
     if [ $status -ne 0 ]; then
         (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
