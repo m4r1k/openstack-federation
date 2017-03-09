@@ -1041,7 +1041,7 @@ This can be done like this::
 
    ./configure-federation client-install
 
-You should see output similar to this::
+After the client RPM installation, you should see output similar to this::
 
   [Step  1] Connect to Keycloak Server
   [Step  2] Create Directories
