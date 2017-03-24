@@ -150,7 +150,7 @@ function copy_helper_to_controller {
 
 function install_mod_auth_mellon {
     local status=0
-    local cmd="sudo yum -y install keycloak-httpd-client-install"
+    local cmd="sudo yum -y install mod_auth_mellon"
 
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
         echo $cmd
@@ -199,7 +199,7 @@ EOF
         return $status
     fi
 
-    $cmd <<< "$contents"
+    sh <<< "$cmd <<< \"$contents\""
     status=$?
     if [ $status -ne 0 ]; then
         (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
@@ -212,6 +212,7 @@ EOF
 
 function client_install {
     local status=0
+    local cmd_client_install="sudo yum -y install keycloak-httpd-client-install"
     local cmd="sudo keycloak-httpd-client-install \
    --client-originate-method registration \
    --mellon-https-port $FED_KEYSTONE_HTTPS_PORT \
@@ -226,16 +227,23 @@ function client_install {
    -l "/v3/OS-FEDERATION/identity_providers/rhsso/protocols/mapped/auth"
 "
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
+	echo $cmd_client_install
         echo $cmd
     fi
     if [ $dry_run -ne 0 ]; then
         return $status
     fi
 
-    $cmd
+    $cmd_client_install
     status=$?
     if [ $status -ne 0 ]; then
-        (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
+        (>&2 echo -e "ERROR cmd \"$cmd_client_install\" failed\nstatus = $status")
+    else
+	$cmd
+	status=$?
+	if [ $status -ne 0 ]; then
+	    (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
+	fi
     fi
     return $status
 }

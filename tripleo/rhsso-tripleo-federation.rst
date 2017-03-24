@@ -933,7 +933,7 @@ From the undercloud node:
 This can be done like this::
 
   % ssh heat-admin@controller-n # replace n with controller number
-  % sudo yum -y install keycloak-httpd-client-install
+  % sudo yum -y install mod_auth_mellon
 
 
 .. Tip::
@@ -990,13 +990,15 @@ Step 9: Add the RH-SSO FQDN to /etc/hosts on each controller
 mellon will be running on each controller node. mellon will be
 configured to connect to the RH-SSO IdP. If the FQDN of the RH-SSO IdP
 is not resolvable via DNS then you will have to manually add the FQDN
-to the /etc/hosts file on *each* controller node::
+to the /etc/hosts file on *each* controller node after the Heat Hosts Section::
 
   % ssh heat-admin@controller-n
   % sudo $EDITOR /etc/hosts
 
   # Add this line (substituting the variables) before this line:
   # HEAT_HOSTS_START - Do not edit manually within this section!
+  ...
+  # HEAT_HOSTS_END
   $FED_RHSSO_IP_ADDR $FED_RHSSO_FQDN
 
 Step 10: Install & configure mellon on controller node
@@ -1041,7 +1043,7 @@ This can be done like this::
 
    ./configure-federation client-install
 
-You should see output similar to this::
+After the client RPM installation, you should see output similar to this::
 
   [Step  1] Connect to Keycloak Server
   [Step  2] Create Directories
