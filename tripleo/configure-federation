@@ -227,7 +227,7 @@ function client_install {
    -l "/v3/OS-FEDERATION/identity_providers/rhsso/protocols/mapped/auth"
 "
     if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
-	echo $cmd_client_install
+        echo $cmd_client_install
         echo $cmd
     fi
     if [ $dry_run -ne 0 ]; then
@@ -239,11 +239,11 @@ function client_install {
     if [ $status -ne 0 ]; then
         (>&2 echo -e "ERROR cmd \"$cmd_client_install\" failed\nstatus = $status")
     else
-	$cmd
-	status=$?
-	if [ $status -ne 0 ]; then
-	    (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
-	fi
+        $cmd
+        status=$?
+        if [ $status -ne 0 ]; then
+            (>&2 echo -e "ERROR cmd \"$cmd\" failed\nstatus = $status")
+        fi
     fi
     return $status
 }
@@ -759,7 +759,7 @@ case $action in
     client-install)
         client_install ;;
     create-sp-archive)
-	create_sp_archive ;;
+        create_sp_archive ;;
     fetch-sp-archive)
         fetch_sp_archive ;;
     deploy-mellon-configuration)
