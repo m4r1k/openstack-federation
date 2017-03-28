@@ -1460,6 +1460,60 @@ group ``openstack-users`` then we will allow that user to operate in
 OpenStack with the privileges bound to the ``federated_users`` group
 in Keystone.
 
+During the OpenStack Ocata development cycle, a blueprint called
+Shadow mapping has been developed allowing a more advanced mapping
+engine for more complex mapping rules.
+One of the fundamental OpenStack Keystone Federation design was that
+all of the federated users are bound to the ``federated_users``
+group in Keystone. This means that all of the users share the same
+Keystone Project. With Shadow mapping is possible to define a set
+project(s) which the federated users will belong to. The allocation
+of the already existing projects as well the creation of the new one
+will happen upon the first successful login attempt, making this
+process a dynamically assigned. Using dynamically assignment requires
+also to specify the user Roles in the Project.
+This feature is called auto-provisioning::
+
+  [
+      {
+          "local": [
+              {
+                  "user": {
+                      "name": "{0}"
+                  },
+                  "group": {
+                      "domain": {
+                          "name": "federated_domain"
+                      },
+                      "name": "federated_users"
+                  }
+               },
+               {
+                   "projects": [
+                       {
+                           "name": "Project for {0}",
+                           "roles": [
+                               {
+                                   "name": "_member_"
+                               }
+                           ]
+                       }
+                   ]
+               }
+          ],
+          "remote": [
+              {
+                  "type": "MELLON_NAME_ID"
+              },
+              {
+                  "type": "MELLON_groups",
+                  "any_one_of": ["openstack-users"]
+              }
+          ]
+      }
+  ]
+
+
 To create the mapping in Keystone you must create a file containing
 the mapping rules and then upload it into Keystone giving it a name so
 it can be referenced. We will create the mapping file in our
@@ -1479,6 +1533,7 @@ like this::
    ./configure-federation openstack-create-mapping
 
    ``create-mapping`` creates the mapping file.
+   ``create-mapping-auto-provisioning`` creates the auto-provisioning mapping file.
    ``openstack-create-mapping`` performs the upload of the file
 
 
@@ -1614,6 +1669,38 @@ You should get this mapped result::
       {
         "domain": {
           "name": "Default"
+        },
+        "name": "federated_users"
+      }
+    ]
+  }
+
+In case of the auto-provisioning, you should get this mapped
+results::
+
+  {
+    "group_ids": [],
+    "user": {
+      "domain": {
+        "id": "Federated"
+      },
+      "type": "ephemeral",
+      "name": "'G-90eb44bc-06dc-4a90-aa6e-fb2aa5d5b0de"
+    },
+    "projects": [
+      {
+        "name": "Project for 'G-90eb44bc-06dc-4a90-aa6e-fb2aa5d5b0de",
+        "roles": [
+          {
+            "name": "_member_"
+          }
+        ]
+      }
+    ],
+    "group_names": [
+      {
+        "domain": {
+          "name": "federated_domain"
         },
         "name": "federated_users"
       }

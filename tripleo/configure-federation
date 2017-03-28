@@ -551,6 +551,71 @@ EOF
     return $status
 }
 
+function create_mapping_auto_provisioning {
+    # Matches documentation
+    # https://docs.openstack.org/developer/keystone/federation/mapping_combinations.html#auto-provisioning
+    local status=0
+    local pathname=${1:-$openstack_mapping_pathname}
+
+    read -r -d '' contents <<'EOF'
+[
+    {
+        "local": [
+            {
+                "user": {
+                    "name": "{0}"
+                },
+                "group": {
+                    "domain": {
+                        "name": "federated_domain"
+                    },
+                    "name": "federated_users"
+                }
+             },
+             {
+                 "projects": [
+                     {
+                         "name": "Project for {0}",
+                         "roles": [
+                             {
+                                 "name": "_member_"
+                             }
+                         ]
+                     }
+                 ]
+             }
+        ],
+        "remote": [
+            {
+                "type": "MELLON_NAME_ID"
+            },
+            {
+                "type": "MELLON_groups",
+                "any_one_of": ["openstack-users"]
+            }
+        ]
+    }
+]
+EOF
+
+    if [ $verbose -ne 0 -o $dry_run -ne 0 ]; then
+        echo "writing pathname = $pathname with contents"
+        echo -e "$contents"
+    fi
+    if [ $dry_run -ne 0 ]; then
+        return $status
+    fi
+
+
+    echo -e "$contents" > $pathname
+    status=$?
+    if [ $status -ne 0 ]; then
+        (>&2 echo -e "ERROR failed to write ${pathname}\nstatus = $status")
+    fi
+
+    return $status
+}
+
 function create_v3_rcfile {
     local status=0
     local input_file=${1:-$overcloudrc_file}
@@ -680,6 +745,7 @@ puppet-override-apache
 puppet-override-keystone
 create-federated-resources
 create-mapping
+create-mapping-auto-provisioning
 create-v3-rcfile
 openstack-create-idp
 openstack-create-mapping
@@ -774,6 +840,8 @@ case $action in
         create_federated_resources ;;
     create-mapping)
         create_mapping "$1" ;;
+    create-mapping-auto-provisioning)
+        create_mapping_auto_provisioning "$1" ;;
     openstack-create-idp)
         openstack_create_idp "$1" ;;
     openstack-create-mapping)
